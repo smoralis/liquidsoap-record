@@ -3,6 +3,7 @@ Record streams with liquidsoap.
 https://github.com/savonet/liquidsoap/releases
 
 #windows command 
+
 liquidsoap.exe record.liq -- "url" "directory" "format" "codec"
 
 e.g
