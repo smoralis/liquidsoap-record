@@ -15,6 +15,7 @@ def remove_illegal(value) =
 str = r/[\?\<\>]/g.replace(fun(_) -> "_",value)
 str = r/[\*<>]/g.replace(fun(_) -> "x",str)
 str = r/[\:\/|\\]/g.replace(fun(_) -> "-",str)
+str = r/[\"]/g.replace(fun(_) -> "''",str)
 str
 end
 
