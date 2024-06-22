@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.2
+#v.1.0.3
 
 #https://github.com/savonet/liquidsoap/releases
 
@@ -19,7 +19,6 @@ str = r/[\"]/g.replace(fun(_) -> "''",str)
 str
 end
 
-folder = remove_illegal(argv(1))
 directory = "#{argv(2)}"
 format = "#{argv(3)}"
 codec = "#{argv(4)}"
@@ -28,8 +27,22 @@ artist = ref("")
 title = ref("")
 tmp_artist = ref("")
 tmp_title = ref("")
+url = ref("")
 
-s = input.ffmpeg(argv(1))
+def split_url
+if string.contains(substring="?", argv(1)) then
+let (u,s) = string.split.first(separator="?", argv(1))
+url.set(u)
+log.important("Stripped %url% after ? of: " ^ s)
+else 
+url.set(argv(1))
+end
+end
+
+split_url
+folder = remove_illegal(url())
+
+s = input.ffmpeg(url())
 
 def split_title(m)
 	if string.length(m["artist"]) <= 0 then
