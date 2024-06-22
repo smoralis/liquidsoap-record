@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.0
+#v.1.0.1
 
 #https://github.com/savonet/liquidsoap/releases
 
@@ -35,8 +35,14 @@ def split_title(m)
 		let (a,t) = string.split.first(separator=" - ", m["title"])
 		artist.set(a)
 		title.set(t)
-		log.important("Splitted %title%")
+		log.important("Splitted %title% to %artist%,%title%")
 		log.important("Artist: " ^ artist())
+		log.important("Title : " ^ title())
+		end
+		if string.contains(substring=" | ", title()) then
+		let (l,r) = string.split.first(separator=" | ", title())
+		title.set(l)
+		log.important("Stripped from %title%: | " ^ r)
 		log.important("Title : " ^ title())
 		end
 	end
