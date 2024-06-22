@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.1
+#v.1.0.2
 
 #https://github.com/savonet/liquidsoap/releases
 
@@ -26,6 +26,8 @@ codec = "#{argv(4)}"
 
 artist = ref("")
 title = ref("")
+tmp_artist = ref("")
+tmp_title = ref("")
 
 s = input.ffmpeg(argv(1))
 
@@ -83,7 +85,10 @@ s = metadata.map(process_metadata, s)
 filename = ref(time.string("#{directory}/archive/#{folder}/%Y-%m-%d_%H-%M-%S.#{format}"))
 
 def handle_metadata(m) 
-	if (m["artist"] != "") and (m["title"] != "") then
+    filename.set(time.string("#{directory}/archive/#{folder}/%Y-%m-%d_%H-%M-%S.#{format}"))
+	if (m["artist"] != "") and (m["title"] != "") and (m["artist"] != tmp_artist()) and (m["title"] != tmp_title()) then
+	tmp_artist.set(m["artist"])
+	tmp_title.set(m["title"])
 	f_artist = remove_illegal(m["artist"])
 	f_title = remove_illegal(m["title"])
 	filename := "#{directory}/archive/#{folder}/#{f_artist} - #{f_title}.#{format}"
@@ -91,7 +96,7 @@ def handle_metadata(m)
 	log.important("New metadata - Starting #{directory}/archive/#{folder}/#{f_artist} - #{f_title}.#{format}")	
 	true
 	else
-	log.important("No metadata - Starting with fallback " ^ filename())
+	log.important("No metadata or the same metadata - not re-opening output")
 	false
 	end
 end
