@@ -1,10 +1,13 @@
 Record streams with liquidsoap. 
 
 Reuirements:
+
 liquidsoap
+
 https://github.com/savonet/liquidsoap/releases
 
 ffprobe
+
 https://www.gyan.dev/ffmpeg/builds/
 
 

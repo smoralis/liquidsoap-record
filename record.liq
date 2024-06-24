@@ -1,30 +1,29 @@
 #record.liq
-#v.1.0.5
+#v.1.0.6
 
 #https://github.com/savonet/liquidsoap/releases
 
 #usage liquidsoap.exe record.liq -- -url "<url>" -dir "<directory>" -t <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -l <0>
 
+#references-definitions
 url = ref("")
 ext = ref("")
 cformat = ref("")
 url.set(getopt(default=" ","-url"))
 directory = getopt(default=" ","-dir")
 folder = ref("")
-
-
 transcode = getopt(default="0","-t")
 samplerate = getopt(default="44100","-samplerate")
 format= getopt(default="mp3","-format")
 codec = getopt(default="libmp3lame","-codec")
 bitrate = getopt(default="320k","-bitrate")
 listen = getopt(default="0","-l")
-
 artist = ref("")
 title = ref("")
 tmp_artist = ref("")
 tmp_title = ref("")
 
+#set ext for selected codec
 if codec == "libmp3lame" then
 ext.set("mp3")
 end
@@ -41,14 +40,17 @@ if codec == "vorbis" then
 ext.set("ogg")
 end
 
+#remove illegal characters 
 def remove_illegal(value) =
 	str = r/[\?\<\>]/g.replace(fun(_) -> "_",value)
 	str = r/[\*<>]/g.replace(fun(_) -> "x",str)
 	str = r/[\:\/|\\]/g.replace(fun(_) -> "-",str)
 	str = r/[\"]/g.replace(fun(_) -> "''",str)
+	str = r/[\.]/g.replace(fun(_) -> "",str)
 	str
 end
 
+#strip url after ?
 def split_url
 	if string.contains(substring="?", url()) then
 	let (u,r) = string.split.first(separator="?", url())
@@ -59,11 +61,14 @@ end
 
 split_url
 
+#folder remove illegal
 folder.set(remove_illegal(url()))
 
+#ffprobe icy-name to use as folder name
 def ffprobe_name() 
   icy_name =  process.read("ffprobe.exe -v quiet -print_format json -select_streams a:0 -show_entries format=format_tags:format_tags=icy-name -of default=noprint_wrappers=1:nokey=1 " ^ url())
   icy_name = r/(\r\n|\n|\r)/g.replace(fun(_) -> "",icy_name)
+  log.important("ffprobe found icy-name #{icy_name}")
   if icy_name != "" then
   folder.set(remove_illegal(icy_name))
   end
@@ -71,6 +76,7 @@ end
 
 ffprobe_name()
 
+#ffprobe url to set format,ext of codec (stream copy)
 def ffprobe_url()
   codec_name =  process.read("ffprobe.exe -v quiet -print_format json -select_streams a:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 " ^ url())
   codec_name = r/(\r\n|\n|\r)/g.replace(fun(_) -> "",codec_name)
@@ -101,8 +107,12 @@ if transcode == "0" then
 ffprobe_url()
 end
 
+#create a m3u playlist in the folder for reference
+m3u = ref("#{directory}/" ^ folder() ^ "/")
+file.mkdir(m3u())
+file.write(data=url(),m3u() ^ "listen.m3u")
 
-
+#split %title% to %artist%,%title% - strip %title% after |
 def split_title(m)
 	if string.length(m["artist"]) <= 0 then
 		if string.contains(substring=" - ", m["title"]) then
@@ -122,6 +132,7 @@ def split_title(m)
 	end
 end
 
+#lowercase %ARTIST%
 def lower_ARTIST(m)
 	if m["ARTIST"] != "" then
 	[("artist",m["ARTIST"])]
@@ -130,6 +141,7 @@ def lower_ARTIST(m)
 	end
 end
 
+#lowercase %TITLE%
 def lower_TITLE(m)
 if m["TITLE"] != "" then
 	[("title",m["TITLE"])]
@@ -138,6 +150,7 @@ if m["TITLE"] != "" then
 	end
 end
 
+#define found metadata
 def process_metadata(m)
 	artist.set("")
 	title.set("")
@@ -149,13 +162,16 @@ def process_metadata(m)
 	end
 end
 
+#add a comment to metadata
 def add_metadata(m)
 	comment = m["comment"]
 	[("comment","#{comment} - ripped with liquidsoap-record")] 
 end
 
+#base filename on start
 filename = ref(time.string("#{directory}/" ^ folder() ^ "/%Y-%m-%d_%H-%M-%S." ^ ext()))
 
+#define when to reopen file on new metadata
 def handle_metadata(m) 
     filename.set(time.string("#{directory}/" ^ folder() ^ "/%Y-%m-%d_%H-%M-%S." ^ ext()))	
 	if (m["artist"] != "") and (m["title"] != "") and ((m["artist"] != tmp_artist()) or (m["title"] != tmp_title())) then
@@ -173,6 +189,7 @@ def handle_metadata(m)
 	end
 end
 
+#stream copy file writer
 if transcode == "0" then
 log.important("Stream COPY")
 
@@ -189,13 +206,15 @@ f1 = output.file(%ffmpeg(
   filename, 
   s1, 
   reopen_on_metadata=handle_metadata, append=true, fallible=true)
-  
+
+#output to portaudio (needs new source input.http - s1 is copy)  
 if listen == "1" then
 x = output.portaudio(mksafe(input.http(url())))
 end
 
 else
 
+#stream transcoding file writer
 log.important("Stream TRANSCODING")
 
 s2 = input.ffmpeg(url())
@@ -212,6 +231,7 @@ f2 = output.file(%ffmpeg(
   s2, 
   reopen_on_metadata=handle_metadata, append=true, fallible=true)
 
+#output to portaudio (use s2 pcm)
 if listen == "1" then
 x = output.portaudio(mksafe(s2))
 end
