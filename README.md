@@ -16,12 +16,17 @@ liquidsoap.exe record.liq -- -url "url" -dir "directory" -t "0" -samplerate "sam
 Arguments:
 
 -url url
+
 -dir directory to save files
 
 -t transcode  0 = no (default) 1 = yes
+
 -samplerate encoder samplerate
+
 -format encoder container format
+
 -codec encoder codec 
+
 -bitrate encoder bitrate
 
 -l listen with portaudio 0 = no (default)  1 = yes
