@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.4
+#v.1.0.5
 
 #https://github.com/savonet/liquidsoap/releases
 
@@ -10,6 +10,8 @@ ext = ref("")
 cformat = ref("")
 url.set(getopt(default=" ","-url"))
 directory = getopt(default=" ","-dir")
+folder = ref("")
+
 
 transcode = getopt(default="0","-t")
 samplerate = getopt(default="44100","-samplerate")
@@ -39,6 +41,14 @@ if codec == "vorbis" then
 ext.set("ogg")
 end
 
+def remove_illegal(value) =
+	str = r/[\?\<\>]/g.replace(fun(_) -> "_",value)
+	str = r/[\*<>]/g.replace(fun(_) -> "x",str)
+	str = r/[\:\/|\\]/g.replace(fun(_) -> "-",str)
+	str = r/[\"]/g.replace(fun(_) -> "''",str)
+	str
+end
+
 def split_url
 	if string.contains(substring="?", url()) then
 	let (u,r) = string.split.first(separator="?", url())
@@ -48,6 +58,18 @@ def split_url
 end
 
 split_url
+
+folder.set(remove_illegal(url()))
+
+def ffprobe_name() 
+  icy_name =  process.read("ffprobe.exe -v quiet -print_format json -select_streams a:0 -show_entries format=format_tags:format_tags=icy-name -of default=noprint_wrappers=1:nokey=1 " ^ url())
+  icy_name = r/(\r\n|\n|\r)/g.replace(fun(_) -> "",icy_name)
+  if icy_name != "" then
+  folder.set(remove_illegal(icy_name))
+  end
+end
+
+ffprobe_name()
 
 def ffprobe_url()
   codec_name =  process.read("ffprobe.exe -v quiet -print_format json -select_streams a:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 " ^ url())
@@ -72,22 +94,14 @@ def ffprobe_url()
   if codec_name == "vorbis" then
   cformat.set("ogg")
   ext.set("ogg")
-  end
+  end  
 end
 
 if transcode == "0" then
 ffprobe_url()
 end
 
-def remove_illegal(value) =
-	str = r/[\?\<\>]/g.replace(fun(_) -> "_",value)
-	str = r/[\*<>]/g.replace(fun(_) -> "x",str)
-	str = r/[\:\/|\\]/g.replace(fun(_) -> "-",str)
-	str = r/[\"]/g.replace(fun(_) -> "''",str)
-	str
-end
 
-folder = remove_illegal(url())
 
 def split_title(m)
 	if string.length(m["artist"]) <= 0 then
@@ -140,18 +154,18 @@ def add_metadata(m)
 	[("comment","#{comment} - ripped with liquidsoap-record")] 
 end
 
-filename = ref(time.string("#{directory}/#{folder}/%Y-%m-%d_%H-%M-%S." ^ ext()))
+filename = ref(time.string("#{directory}/" ^ folder() ^ "/%Y-%m-%d_%H-%M-%S." ^ ext()))
 
 def handle_metadata(m) 
-    filename.set(time.string("#{directory}/#{folder}/%Y-%m-%d_%H-%M-%S." ^ ext()))	
+    filename.set(time.string("#{directory}/" ^ folder() ^ "/%Y-%m-%d_%H-%M-%S." ^ ext()))	
 	if (m["artist"] != "") and (m["title"] != "") and ((m["artist"] != tmp_artist()) or (m["title"] != tmp_title())) then
 	tmp_artist.set(m["artist"])
 	tmp_title.set(m["title"])
 	f_artist = remove_illegal(m["artist"])
 	f_title = remove_illegal(m["title"])
-	filename := "#{directory}/#{folder}/#{f_artist} - #{f_title}." ^ ext()
+	filename := "#{directory}/" ^ folder() ^ "/#{f_artist} - #{f_title}." ^ ext()
 	log.important(string(m))
-	log.important("New metadata - Starting #{directory}/#{folder}/#{f_artist} - #{f_title}." ^ ext())	
+	log.important("New metadata - Starting #{directory}/" ^ folder()^ "/#{f_artist} - #{f_title}." ^ ext())	
 	true
 	else
 	log.important("No metadata or the same metadata - not re-opening output")
