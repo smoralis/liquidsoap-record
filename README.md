@@ -35,10 +35,13 @@ Arguments:
 e.g
 
 Stream copy
+
 liquidsoap.exe record.liq -- -url "http://ice1.somafm.com/groovesalad-256-mp3" -dir "c:\music"
 
 Transcoding
+
 liquidsoap.exe record.liq -- -url "https://stream.radioparadise.com/rock-flacm" -dir "c:\music" -t 1 -samplerate 48000 -format opus -codec libopus -bitrate 128k
+
 
 Transcoding suggestions table
 
