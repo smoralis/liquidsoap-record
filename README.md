@@ -10,7 +10,10 @@ https://www.gyan.dev/ffmpeg/builds/
 
 #windows command 
 
-liquidsoap.exe record.liq -- -url "<url>" -dir "<directory>" -t <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -l <0>
+liquidsoap.exe record.liq -- -url "url" -dir "directory" -t "0" -samplerate "samplerate" -format "format" -codec "codec" -bitrate "bitrate" -l "0"
+
+
+Arguments:
 
 -url url
 -dir directory to save files
