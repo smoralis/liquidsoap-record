@@ -13,7 +13,7 @@ https://www.gyan.dev/ffmpeg/builds/
 
 #windows command 
 
-liquidsoap.exe record.liq -- -url "url" -dir "directory" -t "0" -samplerate "samplerate" -format "format" -codec "codec" -bitrate "bitrate" -l "0"
+liquidsoap.exe record.liq -- -url "url" -dir "directory" -t "0" -samplerate "samplerate" -format "format" -codec "codec" -bitrate "bitrate" -l "0" -log "2"
 
 
 Arguments:
@@ -33,6 +33,8 @@ Arguments:
 -bitrate encoder bitrate
 
 -l listen with portaudio 0 = no (default)  1 = yes
+
+-log log level 2 (default) 
 
 
 e.g
@@ -70,3 +72,32 @@ FLAC
 -samplerate 44100
 -format flac
 -codec flac
+
+
+Changelog:
+
+1.0.7
+fix: ffprobe codec detection (json)
+add: log level selection
+add: delete incomplete recording fragments
+
+1.0.6
+add: create listen.m3u 
+
+1.0.5
+add: ffprobe icy-name as folder name (if availiable)
+
+1.0.4
+add: stream copy mode
+
+1.0.3
+fix: url strip after ?
+
+1.0.2
+fix: ignore received duplicate metadata 
+
+1.0.1
+fix: strip text after | from %title%
+
+1.0.0
+Initial release

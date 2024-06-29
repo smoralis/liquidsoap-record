@@ -1,9 +1,9 @@
 #record.liq
-#v.1.0.6
+#v.1.0.7
 
 #https://github.com/savonet/liquidsoap/releases
 
-#usage liquidsoap.exe record.liq -- -url "<url>" -dir "<directory>" -t <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -l <0>
+#usage liquidsoap.exe record.liq -- -url "<url>" -dir "<directory>" -t <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -l <0> -log <3>
 
 #references-definitions
 url = ref("")
@@ -18,10 +18,14 @@ format= getopt(default="mp3","-format")
 codec = getopt(default="libmp3lame","-codec")
 bitrate = getopt(default="320k","-bitrate")
 listen = getopt(default="0","-l")
+logoutput = getopt(default="2","-log")
 artist = ref("")
 title = ref("")
 tmp_artist = ref("")
 tmp_title = ref("")
+
+#set log level
+settings.log.level.set(int_of_string(logoutput))
 
 #set ext for selected codec
 if codec == "libmp3lame" then
@@ -55,7 +59,7 @@ def split_url
 	if string.contains(substring="?", url()) then
 	let (u,r) = string.split.first(separator="?", url())
 	url.set(u)
-	log.important("Stripped %url% after ? of: " ^ r) 
+	log(label="liquidsoap-record", level=2, "Stripped %url% after ? of: " ^ r) 
 	end
 end
 
@@ -68,49 +72,59 @@ folder.set(remove_illegal(url()))
 def ffprobe_name() 
   icy_name =  process.read("ffprobe.exe -v quiet -print_format json -select_streams a:0 -show_entries format=format_tags:format_tags=icy-name -of default=noprint_wrappers=1:nokey=1 " ^ url())
   icy_name = r/(\r\n|\n|\r)/g.replace(fun(_) -> "",icy_name)
-  log.important("ffprobe found icy-name #{icy_name}")
+  log(label="liquidsoap-record", level=2,"ffprobe icy-name: #{icy_name}")
   if icy_name != "" then
   folder.set(remove_illegal(icy_name))
   end
+  log(label="liquidsoap-record", level=2,"Saving to folder: " ^ folder())
 end
 
 ffprobe_name()
 
 #ffprobe url to set format,ext of codec (stream copy)
-def ffprobe_url()
-  codec_name =  process.read("ffprobe.exe -v quiet -print_format json -select_streams a:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 " ^ url())
-  codec_name = r/(\r\n|\n|\r)/g.replace(fun(_) -> "",codec_name)
-  log.important("ffprobe found codec_name #{codec_name}")
-  if codec_name == "mp3" then
-  cformat.set("mp3")
-  ext.set("mp3")
-  end
-  if codec_name == "aac" then
-  cformat.set("m4a")
-  ext.set("m4a")
-  end
-  if codec_name == "flac" then
-  cformat.set("ogg")
-  ext.set("ogg")
-  end
-  if codec_name == "opus" then
-  cformat.set("ogg")
-  ext.set("opus")
-  end
-  if codec_name == "vorbis" then
-  cformat.set("ogg")
-  ext.set("ogg")
-  end  
+def ffprobe_url() 
+try
+	j =  process.read("ffprobe.exe -v quiet -print_format json -select_streams a:0 -show_entries stream=codec_name -of json=compact=1 " ^ url())
+	let json.parse ({streams = [c1]}: {streams: [{codec_name: string}]}) = j
+	codec_name = string(c1.codec_name)
+	log(label="liquidsoap-record", level=2,"ffprobe codec_name: #{codec_name}")
+  
+	if codec_name == "mp3" then
+	cformat.set("mp3")
+	ext.set("mp3")
+	end
+	if codec_name == "aac" then
+	cformat.set("m4a")
+	ext.set("m4a")
+	end
+	if codec_name == "flac" then
+	cformat.set("ogg")
+	ext.set("ogg")
+	end
+	if codec_name == "opus" then
+	cformat.set("ogg")
+	ext.set("opus")
+	end
+	if codec_name == "vorbis" then
+	cformat.set("ogg")
+	ext.set("ogg")
+	end  
+catch err do
+    log(label="liquidsoap-record", level=2,"ffprobe failed to get codec_name!!! with error: #{err.message}")
+	log(label="liquidsoap-record", level=2,"Is the stream online ??")
+	#shutdown()
+	end
 end
 
+#ffprobe codec for stream copy
 if transcode == "0" then
 ffprobe_url()
 end
 
 #create a m3u playlist in the folder for reference
-m3u = ref("#{directory}/" ^ folder() ^ "/")
+m3u = ref("#{directory}/" ^ folder())
 file.mkdir(m3u())
-file.write(data=url(),m3u() ^ "listen.m3u")
+file.write(data=url(),m3u() ^ "/#listen.m3u")
 
 #split %title% to %artist%,%title% - strip %title% after |
 def split_title(m)
@@ -119,15 +133,15 @@ def split_title(m)
 		let (a,t) = string.split.first(separator=" - ", m["title"])
 		artist.set(a)
 		title.set(t)
-		log.important("Splitted %title% to %artist%,%title%")
-		log.important("Artist: " ^ artist())
-		log.important("Title : " ^ title())
+		log(label="liquidsoap-record", level=3,"Splitted %title% to %artist%,%title%")
+		log(label="liquidsoap-record", level=3,"Artist: " ^ artist())
+		log(label="liquidsoap-record", level=3,"Title : " ^ title())
 		end
 		if string.contains(substring=" | ", title()) then
 		let (l,r) = string.split.first(separator=" | ", title())
 		title.set(l)
-		log.important("Stripped from %title%: | " ^ r)
-		log.important("Title : " ^ title())
+		log(label="liquidsoap-record", level=3,"Stripped from %title%: | " ^ r)
+		log(label="liquidsoap-record", level=3,"Title : " ^ title())
 		end
 	end
 end
@@ -143,7 +157,7 @@ end
 
 #lowercase %TITLE%
 def lower_TITLE(m)
-if m["TITLE"] != "" then
+	if m["TITLE"] != "" then
 	[("title",m["TITLE"])]
 	else
 	[]
@@ -180,18 +194,30 @@ def handle_metadata(m)
 	f_artist = remove_illegal(m["artist"])
 	f_title = remove_illegal(m["title"])
 	filename := "#{directory}/" ^ folder() ^ "/#{f_artist} - #{f_title}." ^ ext()
-	log.important(string(m))
-	log.important("New metadata - Starting #{directory}/" ^ folder()^ "/#{f_artist} - #{f_title}." ^ ext())	
+	log(label="liquidsoap-record", level=3,string(m))
+	log(label="liquidsoap-record", level=3,"Recording.. #{directory}/" ^ folder()^ "/#{f_artist} - #{f_title}." ^ ext())
+	log(label="liquidsoap-record", level=2,"New Track Detected")	
+	log(label="liquidsoap-record", level=2,"Recording.. #{f_artist} - #{f_title}." ^ ext())	
+	log(label="liquidsoap-record", level=2,"--press CTRL-C to stop/exit.")
 	true
 	else
-	log.important("No metadata or the same metadata - not re-opening output")
 	false
+	end
+end
+
+#define file operations - delete recorded fragments
+def handle_file(f)
+	if file.size(f) < 100000 then
+	file.remove(f)
+	log(label="liquidsoap-record", level=2,"Deleted unwanted fragment " ^ f)
 	end
 end
 
 #stream copy file writer
 if transcode == "0" then
-log.important("Stream COPY")
+log(label="liquidsoap-record", level=2,"STREAM COPY MODE")
+log(label="liquidsoap-record", level=2,"Recording.. " ^ filename())	
+log(label="liquidsoap-record", level=2,"--press CTRL-C to stop/exit.")
 
 s1 = input.ffmpeg(url())
 
@@ -205,7 +231,7 @@ f1 = output.file(%ffmpeg(
   %audio.copy), 
   filename, 
   s1, 
-  reopen_on_metadata=handle_metadata, append=true, fallible=true)
+  reopen_on_metadata=handle_metadata, on_close=handle_file, append=true, fallible=true)
 
 #output to portaudio (needs new source input.http - s1 is copy)  
 if listen == "1" then
@@ -215,7 +241,9 @@ end
 else
 
 #stream transcoding file writer
-log.important("Stream TRANSCODING")
+log(label="liquidsoap-record", level=2,"STREAM TRANSCODING MODE")
+log(label="liquidsoap-record", level=2,"Recording.. " ^ filename())	
+log(label="liquidsoap-record", level=2,"--press CTRL-C to stop/exit.")
 
 s2 = input.ffmpeg(url())
 
@@ -229,7 +257,7 @@ f2 = output.file(%ffmpeg(
   %audio(samplerate = "#{samplerate}", codec = "#{codec}", b = "#{bitrate}")), 
   filename, 
   s2, 
-  reopen_on_metadata=handle_metadata, append=true, fallible=true)
+  reopen_on_metadata=handle_metadata, on_close=handle_file, append=true, fallible=true)
 
 #output to portaudio (use s2 pcm)
 if listen == "1" then
