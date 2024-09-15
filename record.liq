@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.21 2024-09-15
+#v.1.0.20 2024-09-15
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0>
 
@@ -66,7 +66,7 @@ def remove_illegal(value) =
 end
 
 #strip url after &
-def split_url
+def split_url()
 	if string.contains(substring="&", url()) then
 	let (u,r) = string.split.first(separator="&", url())
 	url.set(u)
@@ -74,7 +74,7 @@ def split_url
 	end
 end
 
-split_url
+split_url()
 
 #folder remove illegal
 folder.set(string.trim(remove_illegal(url())))
