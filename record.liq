@@ -65,12 +65,12 @@ def remove_illegal(value) =
 	str
 end
 
-#strip url after ?
+#strip url after &
 def split_url
-	if string.contains(substring="?", url()) then
-	let (u,r) = string.split.first(separator="?", url())
+	if string.contains(substring="&", url()) then
+	let (u,r) = string.split.first(separator="&", url())
 	url.set(u)
-	log(label="liquidsoap-record", level=2, "Stripped %url% after ? of: " ^ r) 
+	log(label="liquidsoap-record", level=2, "Stripped %url% after & of: " ^ r) 
 	end
 end
 
