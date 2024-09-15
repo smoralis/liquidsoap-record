@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.20 2024-08-30
+#v.1.0.21 2024-09-15
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0>
 
