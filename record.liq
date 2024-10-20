@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.20 2024-09-15
+#v.1.0.21 2024-10-20
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0>
 
@@ -190,6 +190,12 @@ def split_title(m)
 		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Stripped from %title%: | " ^ r)
 		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Title : " ^ title())
 		end
+		if string.contains(substring=" [", title()) then
+		let (l,r) = string.split.first(separator=" [", title())
+		title.set(string.trim(l))
+		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Stripped from %title%: [" ^ r)
+		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Title : " ^ title())
+		end
 	end
 end
 
@@ -333,7 +339,7 @@ f1 = output.file(%ffmpeg(
   %audio.copy), 
   filename, 
   s1, 
-  reopen_on_metadata=handle_metadata, on_close=handle_file, append=true, fallible=true)
+  reopen_on_metadata=handle_metadata, on_close=handle_file, reopen_on_error=fun(_) -> 0., append=true, fallible=true)
   
 #output to portaudio (use ffmpeg.decode.audio(s1))  
 %ifdef output.portaudio
@@ -372,7 +378,7 @@ f2 = output.file(%ffmpeg(
   %audio(samplerate = "#{samplerate}", codec = "#{codec}", b = "#{bitrate}")), 
   filename, 
   s2, 
-  reopen_on_metadata=handle_metadata, on_close=handle_file, append=true, fallible=true)
+  reopen_on_metadata=handle_metadata, on_close=handle_file, reopen_on_error=fun(_) -> 0., append=true, fallible=true)
 
 #output to portaudio (use s2 pcm) 
 %ifdef output.portaudio
