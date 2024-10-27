@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.21 2024-10-20
+#v.1.0.23 2024-10-27
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0>
 
@@ -31,6 +31,9 @@ tfilename = ref("")
 
 #create root directory 					   
 file.mkdir(directory)
+
+#set metadata
+settings.encoder.metadata.export := ["artist", "title", "album", "genre", "date", "tracknumber", "comment", "track", "year", "dj", "next", "apic", "pic", "metadata_url", "metadata_block_picture", "coverart", "cover_url" , "url"]
 
 #set log level
 settings.log.level.set(int_of_string(logoutput))
@@ -83,7 +86,7 @@ folder.set(string.trim(remove_illegal(url())))
 def ffprobe_name() 
   icy_name =  process.read("ffprobe -v quiet -print_format json -select_streams a:0 -show_entries format=format_tags:format_tags=icy-name -of default=noprint_wrappers=1:nokey=1 " ^ url())
   icy_name = r/(\r\n|\n|\r)/g.replace(fun(_) -> "",icy_name)
-  log(label="liquidsoap-record", level=2,"ffprobe icy-name: #{icy_name}")
+  log(label="liquidsoap-record", level=2,"FFPROBE icy-name: #{icy_name}")
   if icy_name != "" then
   folder.set(string.trim(remove_illegal(icy_name)))
   end
@@ -98,7 +101,7 @@ try
 	j =  process.read("ffprobe -v quiet -print_format json -select_streams a:0 -show_entries stream=codec_name -of json=compact=1 " ^ url())
 	let json.parse ({streams = [c1]}: {streams: [{codec_name: string}]}) = j
 	codec_name.set(string(c1.codec_name))
-	log(label="liquidsoap-record", level=2,"ffprobe codec_name: " ^ codec_name())
+	log(label="liquidsoap-record", level=2,"FFPROBE codec_name: " ^ codec_name())
   
 	if codec_name() == "mp3" then
 	cformat.set("mp3")
@@ -158,7 +161,7 @@ file.write(data=url(),m3u() ^ "/#listen.m3u")
 #lowercase %ARTIST%
 def lower_ARTIST(m)
 	if m["ARTIST"] != "" then
-	[("artist",m["ARTIST"])]
+	[("artist",m["ARTIST"]),("ARTIST","")]
 	else
 	[]
 	end
@@ -167,10 +170,15 @@ end
 #lowercase %TITLE%
 def lower_TITLE(m)
 	if m["TITLE"] != "" then
-	[("title",m["TITLE"])]
+	[("title",m["TITLE"]),("TITLE","")]
 	else
 	[]
 	end
+end
+
+#clean empty metadata
+def clean_metadata(m)
+m
 end
 
 #split %title% to %artist%,%title% - strip %title% after |
@@ -194,6 +202,12 @@ def split_title(m)
 		let (l,r) = string.split.first(separator=" [", title())
 		title.set(string.trim(l))
 		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Stripped from %title%: [" ^ r)
+		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Title : " ^ title())
+		end
+		if string.contains(substring=" - ", title()) then
+		let (l,r) = string.split.first(separator=" - ", title())
+		title.set(string.trim(l))
+		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Stripped from %title%: - " ^ r)
 		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Title : " ^ title())
 		end
 	end
@@ -220,6 +234,13 @@ def add_metadata(m)
 	[("comment","#{comment} - ripped with liquidsoap-record - from:  " ^ url())] 
 end
 
+def download_cover(m,covername)
+	if (m["url"] != "" or m["cover_url"] != "") and (string.contains(suffix = "jpg",m["url"]) or string.contains(suffix = "png",m["url"])) then
+	cov = file.download(filename=covername, m["url"])
+	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " FOUND COVER : " ^ string(cov) ^ " : " ^ m["url"])
+	end
+end
+
 #base filename on start
 filename = ref(time.string("#{directory}/" ^ folder() ^ "/%Y-%m-%d_%H-%M-%S." ^ ext()^ ".rec#s"))
 nowrecording.set(time.string("[%Y-%m-%d_%H-%M-%S." ^ ext()^ ".rec#s]"))
@@ -236,6 +257,7 @@ def handle_metadata(m)
 	f_title = remove_illegal(m["title"])
 	filename.set("#{directory}/" ^ folder() ^  "/#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()))
 	nowrecording.set("[#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()) ^ "]")
+	download_cover(m,"#{directory}/" ^ folder() ^  "/#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()) ^ ".cover")
 	log(label="liquidsoap-record", level=2,"#" ^ string(counter()) ^ " New Track Detected. Recording.. #{f_artist} - #{f_title}." ^ ext())	
 	log(label="liquidsoap-record", level=2,"-- press CTRL-C to stop/exit --")
 	true
@@ -255,7 +277,15 @@ def handle_metadata(m)
 end
 
 def post_handle_file(f)
+
+#testing ffprobe duration
+#	d =  process.read("ffprobe -v quiet -print_format json -select_streams a:0 -show_entries format=duration -of json=compact=1 " ^ string.quote(f))
+#	let json.parse ({format = d0}: {format: {duration: string}}) = d
+#	f_duration = float_of_string(d0.duration)
+
 	f_duration = request.duration(resolve_metadata=false,f)
+
+
 	let (t,n) = string.split.first(separator=".rec", f)	
 	tfilename.set(t)
 	log(label="liquidsoap-record", level=3,n ^ " POST DURATION " ^ string(f_duration))
@@ -287,31 +317,65 @@ end
 #file/fragments handling on close
 def handle_file(f)
 	let (t,n) = string.split.first(separator=".rec", f)
-	log(label="liquidsoap-record", level=3,n ^ " ORIGINAL DURATION " ^  string(request.duration(resolve_metadata=false,f)))
 	tfilename.set(t)
-	if codec_name() == "flac" then
-	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (FLAC) " ^ f)
-	tmp_filename = f ^ ".tmp"
-	tmp_flac_filename = f ^ ".flac"
-	file.copy(f,tmp_filename)
-	process.run("ffmpeg -y -i " ^ string.quote(tmp_filename) ^ " " ^  string.quote(tmp_flac_filename)) 
-	file.remove(f)
-	file.copy(tmp_flac_filename,f)
-	file.remove(tmp_filename)
-	file.remove(tmp_flac_filename)
-	post_handle_file(f)
-	else
-	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (OTHER) " ^ f)
 	tmp_filename = f ^ ".tmp"
 	tmp_ext_filename = f ^ "." ^ ext()
 	file.copy(f,tmp_filename)
-	process.run("ffmpeg -y -i " ^ string.quote(tmp_filename) ^ " -c:a copy " ^  string.quote(tmp_ext_filename)) 
+	
+#FLAC	
+	if (codec_name() == "flac") and (file.exists(f ^ ".cover")) then
+	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (FLAC) with COVER " ^ f)
+	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " -i " ^ string.quote(f ^ ".cover")^ " -map 0:a -map 1 -metadata:s:v title=\"Album cover\" -metadata:s:v comment=\"Cover (front)\" -disposition:v attached_pic " ^  string.quote(tmp_ext_filename))
+	end
+	if (codec_name() == "flac") and not (file.exists(f ^ ".cover")) then
+	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (FLAC) " ^ f)
+	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " " ^  string.quote(tmp_ext_filename)) 
+	end
+	
+#AAC	
+	if (codec_name() == "aac") and (file.exists(f ^ ".cover")) then
+	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (AAC) with COVER " ^ f)
+	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " -i " ^ string.quote(f ^ ".cover")^ " -map 0:a:0 -map 1:v:0 -filter:v \"scale=w=500:h=500,format=yuvj420p\" -c:a copy -c:v mjpeg -disposition:v:0 attached_pic " ^  string.quote(tmp_ext_filename))
+	end
+	if (codec_name() == "aac") and not (file.exists(f ^ ".cover")) then
+	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (AAC) " ^ f)
+	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " -c:a copy " ^  string.quote(tmp_ext_filename)) 
+	end
+	
+#MP3
+	if (codec_name() == "mp3") and (file.exists(f ^ ".cover")) then
+	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (MP3) with COVER " ^ f)
+	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " -i " ^ string.quote(f ^ ".cover")^ " -map 0:a:0 -map 1:v:0 -id3v2_version 3 -metadata:s:v title=\"Album cover\" -metadata:s:v comment=\"Cover (front)\" -c:a copy " ^  string.quote(tmp_ext_filename))
+	end
+	if (codec_name() == "mp3") and not (file.exists(f ^ ".cover")) then
+	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (MP3) " ^ f)
+	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " -c:a copy " ^  string.quote(tmp_ext_filename)) 
+	end
+	
+#OPUS
+	if codec_name() == "opus" then
+	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (OPUS) " ^ f)
+	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " -c:a copy " ^  string.quote(tmp_ext_filename)) 
+	end
+	
+#VORBIS
+	if codec_name() == "vorbis" then
+	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (VORBIS) " ^ f)
+	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " -c:a copy " ^  string.quote(tmp_ext_filename)) 
+	end
+
+
 	file.remove(f)
 	file.copy(tmp_ext_filename,f)
 	file.remove(tmp_filename)
 	file.remove(tmp_ext_filename)
-	post_handle_file(f)
+	
+	if file.exists(f ^ ".cover") then
+	file.remove(f ^ ".cover")
 	end
+	
+	post_handle_file(f)
+	
 end
 
 
@@ -330,6 +394,7 @@ s1 = input.ffmpeg(self_sync=true,url())
 
 s1 = metadata.map(lower_ARTIST, s1)
 s1 = metadata.map(lower_TITLE, s1)
+s1 = metadata.map(strip=true,clean_metadata, s1)
 s1 = metadata.map(process_metadata, s1)
 s1 = metadata.map(add_metadata, s1)
 
@@ -339,7 +404,7 @@ f1 = output.file(%ffmpeg(
   %audio.copy), 
   filename, 
   s1, 
-  reopen_on_metadata=handle_metadata, on_close=handle_file, reopen_on_error=fun(_) -> 0., append=true, fallible=true)
+  reopen_on_metadata=handle_metadata, on_close=handle_file, reopen_on_error=fun(_) -> 2., append=true, fallible=true)
   
 #output to portaudio (use ffmpeg.decode.audio(s1))  
 %ifdef output.portaudio
@@ -378,7 +443,7 @@ f2 = output.file(%ffmpeg(
   %audio(samplerate = "#{samplerate}", codec = "#{codec}", b = "#{bitrate}")), 
   filename, 
   s2, 
-  reopen_on_metadata=handle_metadata, on_close=handle_file, reopen_on_error=fun(_) -> 0., append=true, fallible=true)
+  reopen_on_metadata=handle_metadata, on_close=handle_file, reopen_on_error=fun(_) -> 2., append=true, fallible=true)
 
 #output to portaudio (use s2 pcm) 
 %ifdef output.portaudio

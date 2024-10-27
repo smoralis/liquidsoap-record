@@ -7,7 +7,7 @@ Record internet radio streams (aac,mp3,flac,opus,vorbis) with liquidsoap.
 ## Requirements
 OS : tested with Windows10 and Debian(bookworm)
 
-liquidsoap >=2.2.5
+liquidsoap 2.2.5
 
 https://github.com/savonet/liquidsoap/releases
 
