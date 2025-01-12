@@ -20,7 +20,7 @@ linux : sudo apt install ffmpeg
 ## command
 
 ```
- liquidsoap record.liq -- -url "url" -dir "directory" -transcode "0" -samplerate "samplerate" -format "format" -codec "codec" -bitrate "bitrate" -listen "0" -device "portaudio|alsa" -log "2" -keep "0"
+ liquidsoap record.liq -- -url "url" -dir "directory" -transcode "0" -samplerate "samplerate" -format "format" -codec "codec" -bitrate "bitrate" -listen "0" -device "portaudio|alsa" -log "2" -keep "0" -id "tunein_id"
 ```
 
 
@@ -38,6 +38,7 @@ linux : sudo apt install ffmpeg
 | -device         | listen to output with device : portaudio (default) , alsa |
 | -log       | log level : 1 crtitcal , 2 severe (default) , 3 important, 4 info , 5 debug|
 | -keep         | keep fragments & move them to "incomplete" subfolder : 0 = no (default) , 1 = yes |
+| -id         | tunein id |
 
 
 ## Examples
@@ -51,6 +52,11 @@ Transcoding
 ```
 liquidsoap record.liq -- -url "https://stream.radioparadise.com/rock-flacm" -dir "c:\music" -transcode 1 -samplerate 48000 -format opus -codec libopus -bitrate 128k
 
+```
+
+Stream Copy with tunein_id (e.g) https://tunein.com/radio/Roxx-Radio-s240638/
+```
+liquidsoap record.liq -- -url "http://stream.radiojar.com/aay95tkmb" -dir "c:\music" -id s240638
 ```
 
 ## Transcoding

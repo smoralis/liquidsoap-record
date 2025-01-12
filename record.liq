@@ -1,7 +1,7 @@
 #record.liq
-#v.1.0.24 2024-10-30
+#v.1.0.25 2025-01-12
 
-#usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0>
+#usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id>
 
 
 #references-definitions
@@ -29,6 +29,8 @@ counter = ref(-1)
 nowrecording = ref("")
 tfilename = ref("")
 cover = ref("")
+tunein_id = ref("")
+tunein_id.set(getopt(default=" ","-id"))
 
 #create root directory 					   
 file.mkdir(directory)
@@ -245,6 +247,7 @@ end
 
 def download_cover(m,covername)
 	cover.set("")
+
 	if (m["url"] != "") and string.contains(substring="?", m["url"]) then
 	let (q,t) = string.split.first(separator="?", m["url"])
 	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Stripped from %url%: [" ^ t)
@@ -254,8 +257,17 @@ def download_cover(m,covername)
 	end
 	if (cover() != "") and (string.contains(suffix = "jpg",cover()) or string.contains(suffix = "png",cover())) then
 	cov = file.download(filename=covername, cover())
-	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " FOUND COVER : " ^ string(cov) ^ " : " ^ cover())
+	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " FOUND COVER (url): " ^ string(cov) ^ " : " ^ cover())
 	end
+	
+	if (tunein_id() != " ") then
+	tjson = http.get("https://feed.tunein.com/profiles/" ^ tunein_id() ^ "/nowPlaying?junk=" ^ string(random.int()))
+	let json.parse ({Secondary}: {Secondary: {Image: string}}) = tjson
+	cover.set(string(Secondary.Image))
+	cov2 = file.download(filename=covername, cover())
+	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " FOUND COVER (tunein): " ^ string(cov2) ^ " : " ^ cover())
+	end
+	
 end
 
 #base filename on start
@@ -274,7 +286,7 @@ def handle_metadata(m)
 	f_title = remove_illegal(m["title"])
 	filename.set("#{directory}/" ^ folder() ^  "/#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()))
 	nowrecording.set("[#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()) ^ "]")
-	download_cover(m,"#{directory}/" ^ folder() ^  "/#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()) ^ ".cover")
+	thread.run(delay=10.,{download_cover(m,"#{directory}/" ^ folder() ^  "/#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()) ^ ".cover")})
 	log(label="liquidsoap-record", level=2,"#" ^ string(counter()) ^ " New Track Detected. Recording.. #{f_artist} - #{f_title}." ^ ext())	
 	log(label="liquidsoap-record", level=2,"-- press CTRL-C to stop/exit --")
 	true
@@ -406,7 +418,7 @@ log(label="liquidsoap-record", level=2,"--press CTRL-C to stop/exit.")
 
 #default streamcopy mode - audio.copy
 
-s1 = input.ffmpeg(self_sync=true,url()) 
+s1 = buffer(input.ffmpeg(self_sync=true,poll_delay=0.1,url()))
 
 
 s1 = metadata.map(lower_ARTIST, s1)
@@ -421,7 +433,7 @@ f1 = output.file(%ffmpeg(
   %audio.copy), 
   filename, 
   s1, 
-  reopen_on_metadata=handle_metadata, on_close=handle_file, reopen_on_error=fun(_) -> 2., append=true, fallible=true)
+  reopen_on_metadata=handle_metadata, on_close=handle_file, reopen_on_error=fun(_) -> 0., append=true, fallible=true)
   
 #output to portaudio (use ffmpeg.decode.audio(s1))  
 %ifdef output.portaudio
@@ -438,7 +450,7 @@ end
 %endif
 
 #progess logging  
-thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recorded " ^ format_time(s1.elapsed()) ^ " " ^ nowrecording()))
+thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording " ^ format_time(s1.elapsed()) ^ " " ^ nowrecording()))
 
 else
 
@@ -447,7 +459,7 @@ log(label="liquidsoap-record", level=2,"STREAM TRANSCODING MODE")
 log(label="liquidsoap-record", level=2,"Recording.. " ^ filename())	
 log(label="liquidsoap-record", level=2,"--press CTRL-C to stop/exit.")
 
-s2 = input.ffmpeg(self_sync=true,url()) 
+s2 = buffer(input.ffmpeg(self_sync=true,poll_delay=0.1,url()))
 
 
 s2 = metadata.map(lower_ARTIST, s2)
@@ -461,7 +473,7 @@ f2 = output.file(%ffmpeg(
   %audio(samplerate = "#{samplerate}", codec = "#{codec}", b = "#{bitrate}")), 
   filename, 
   s2, 
-  reopen_on_metadata=handle_metadata, on_close=handle_file, reopen_on_error=fun(_) -> 2., append=true, fallible=true)
+  reopen_on_metadata=handle_metadata, on_close=handle_file, reopen_on_error=fun(_) -> 0., append=true, fallible=true)
 
 #output to portaudio (use s2 pcm) 
 %ifdef output.portaudio
@@ -479,6 +491,6 @@ end
 
 
 #progess logging  
-thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recorded " ^ format_time(s2.elapsed()) ^ " " ^ nowrecording() ))
+thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording " ^ format_time(s2.elapsed()) ^ " " ^ nowrecording() ))
 
 end
