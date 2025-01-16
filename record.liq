@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.25 2025-01-12
+#v.1.0.26 2025-01-16
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id>
 
@@ -31,6 +31,8 @@ tfilename = ref("")
 cover = ref("")
 tunein_id = ref("")
 tunein_id.set(getopt(default=" ","-id"))
+f_duration = ref(0.)
+fx_duration = ref(0.)
 
 #create root directory 					   
 file.mkdir(directory)
@@ -306,36 +308,35 @@ def handle_metadata(m)
 end
 
 def post_handle_file(f)
-
-#testing ffprobe duration
-#	d =  process.read("ffprobe -v quiet -print_format json -select_streams a:0 -show_entries format=duration -of json=compact=1 " ^ string.quote(f))
-#	let json.parse ({format = d0}: {format: {duration: string}}) = d
-#	f_duration = float_of_string(d0.duration)
-
-	f_duration = request.duration(resolve_metadata=false,f)
-
-
+	
+	if liquidsoap.version.at_least("2.3.0")then
+	f_duration.set(fx_duration())
+	else
+	f_duration.set(request.duration(resolve_metadata=false,f))
+	end
+	
 	let (t,n) = string.split.first(separator=".rec", f)	
 	tfilename.set(t)
-	log(label="liquidsoap-record", level=3,n ^ " POST DURATION " ^ string(f_duration))
-	log(label="liquidsoap-record", level=3,n ^ " CLOSE " ^ string(f_duration) ^ " [" ^ format_time(float_of_string(string(f_duration))) ^ "]  " ^ f )
+
+	log(label="liquidsoap-record", level=3,n ^ " POST DURATION " ^ string(f_duration()))
+	log(label="liquidsoap-record", level=3,n ^ " CLOSE " ^ string(f_duration()) ^ " [" ^ format_time(float_of_string(string(f_duration()))) ^ "]  " ^ f )
 	
 	if file.exists(tfilename()) then
 	tfilename.set(time.string(tfilename() ^ "-%Y-%m-%d_%H-%M-%S." ^ ext()))
 	end
 	
-	if (f_duration < 15.) and (keep == "0") then
+	if (f_duration() < 15.) and (keep == "0") then
 	file.remove(f)
 	log(label="liquidsoap-record", level=3,n ^ " Deleted unwanted fragment " ^ tfilename())
 	
-	elsif (f_duration < 15.)and (keep == "1") then
+	elsif (f_duration() < 15.)and (keep == "1") then
 	file.copy(f,tfilename())
 	file.mkdir("#{directory}/" ^ folder() ^ "/incomplete")
 	file.move(t,"#{directory}/" ^ folder() ^ "/incomplete")
 	file.remove(f)
 	log(label="liquidsoap-record", level=3,n ^ " Moved unwanted fragment ID " ^ n ^ " to incomplete.Filename "  ^ tfilename())
 		
-	elsif (f_duration > 15.) then
+	elsif (f_duration() > 15.) then
 	file.copy(f,tfilename())
 	file.remove(f)
 	log(label="liquidsoap-record", level=3,n ^ " Finished. Saved filename : " ^ tfilename())
@@ -435,6 +436,11 @@ f1 = output.file(%ffmpeg(
   s1, 
   reopen_on_metadata=handle_metadata, on_close=handle_file, reopen_on_error=fun(_) -> 0., append=true, fallible=true)
   
+#file duration monitor
+if liquidsoap.version.at_least("2.3.0")then
+thread.run(every=1.,fun() -> fx_duration.set(f1.elapsed()))
+end
+  
 #output to portaudio (use ffmpeg.decode.audio(s1))  
 %ifdef output.portaudio
 if (listen == "1") and (device == "portaudio") then
@@ -474,6 +480,11 @@ f2 = output.file(%ffmpeg(
   filename, 
   s2, 
   reopen_on_metadata=handle_metadata, on_close=handle_file, reopen_on_error=fun(_) -> 0., append=true, fallible=true)
+  
+#file duration monitor
+if liquidsoap.version.at_least("2.3.0")then
+thread.run(every=1.,fun() -> fx_duration.set(f2.elapsed()))
+end
 
 #output to portaudio (use s2 pcm) 
 %ifdef output.portaudio
