@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.26 2025-01-16
+#v.1.0.27 2025-01-17
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id>
 
@@ -32,7 +32,6 @@ cover = ref("")
 tunein_id = ref("")
 tunein_id.set(getopt(default=" ","-id"))
 f_duration = ref(0.)
-fx_duration = ref(0.)
 
 #create root directory 					   
 file.mkdir(directory)
@@ -310,7 +309,8 @@ end
 def post_handle_file(f)
 	
 	if liquidsoap.version.at_least("2.3.0")then
-	f_duration.set(fx_duration())
+	f_duration.set(float_of_string(file.contents(f ^ ".duration")))
+	file.remove(f ^ ".duration")
 	else
 	f_duration.set(request.duration(resolve_metadata=false,f))
 	end
@@ -438,7 +438,7 @@ f1 = output.file(%ffmpeg(
   
 #file duration monitor
 if liquidsoap.version.at_least("2.3.0")then
-thread.run(every=1.,fun() -> fx_duration.set(f1.elapsed()))
+thread.run(every=1.,fun() -> file.write(data=string(f1.elapsed()),filename() ^ ".duration"))
 end
   
 #output to portaudio (use ffmpeg.decode.audio(s1))  
@@ -483,7 +483,7 @@ f2 = output.file(%ffmpeg(
   
 #file duration monitor
 if liquidsoap.version.at_least("2.3.0")then
-thread.run(every=1.,fun() -> fx_duration.set(f2.elapsed()))
+thread.run(every=1.,fun() -> file.write(data=string(f2.elapsed()),filename() ^ ".duration"))
 end
 
 #output to portaudio (use s2 pcm) 
@@ -502,6 +502,6 @@ end
 
 
 #progess logging  
-thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording " ^ format_time(s2.elapsed()) ^ " " ^ nowrecording() ))
+thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording " ^ format_time(s2.elapsed()) ^ " " ^ nowrecording()))
 
 end
