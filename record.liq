@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.27 2025-01-17
+#v.1.0.28 2025-01-18
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id>
 
@@ -196,8 +196,8 @@ def split_title(m)
 		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Artist: " ^ artist())
 		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Title : " ^ title())
 		end
-		if string.contains(substring=" ˗ ", m["title"]) then
-		let (a,t) = string.split.first(separator=" ˗ ", m["title"])
+		if string.contains(substring=" ? ", m["title"]) then
+		let (a,t) = string.split.first(separator=" ? ", m["title"])
 		artist.set(string.trim(a))
 		title.set(string.trim(t))
 		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Splitted %title% to %artist%,%title%")
@@ -227,7 +227,6 @@ end
 
 #define found metadata
 def process_metadata(m)
-	ref.incr(counter)
 	artist.set("")
 	title.set("")
 	split_title(m) 
@@ -278,9 +277,10 @@ nowrecording.set(time.string("[%Y-%m-%d_%H-%M-%S." ^ ext()^ ".rec#s]"))
 #define when to reopen file on new metadata
 def handle_metadata(m)	
 	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " NEW METADATA " ^ string(m))
-	filename.set(time.string("#{directory}/" ^ folder() ^ "/%Y-%m-%d_%H-%M-%S." ^ ext() ^ ".rec#" ^ string(counter())))	
+#	filename.set(time.string("#{directory}/" ^ folder() ^ "/%Y-%m-%d_%H-%M-%S." ^ ext() ^ ".rec#" ^ string(counter())))	
 	if (m["artist"] != "") and (m["title"] != "") and ((m["artist"] != tmp_artist()) or (m["title"] != tmp_title())) then
 	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " RE-OPEN ARTIST - TITLE")
+	ref.incr(counter)
 	tmp_artist.set(m["artist"])
 	tmp_title.set(m["title"])
 	f_artist = remove_illegal(m["artist"])
@@ -293,6 +293,7 @@ def handle_metadata(m)
 	true
 	elsif (m["artist"] == "") and (m["title"] != "") and (m["title"] != tmp_title()) then
 	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " RE-OPEN TITLE")
+	ref.incr(counter)
 	tmp_title.set(m["title"])
 	f_title = remove_illegal(m["title"])
 	filename.set("#{directory}/" ^ folder() ^  "/#{f_title}." ^ ext() ^ ".rec#" ^ string(counter()))
@@ -309,8 +310,9 @@ end
 def post_handle_file(f)
 	
 	if liquidsoap.version.at_least("2.3.0")then
-	f_duration.set(float_of_string(file.contents(f ^ ".duration")))
-	file.remove(f ^ ".duration")
+	d =  process.read("ffprobe -v quiet -print_format json -select_streams a:0 -show_entries format=duration -of json=compact=1 " ^ string.quote(f))
+	let json.parse ({format = d0}: {format: {duration: string}}) = d
+	f_duration.set(float_of_string(d0.duration))
 	else
 	f_duration.set(request.duration(resolve_metadata=false,f))
 	end
@@ -435,12 +437,7 @@ f1 = output.file(%ffmpeg(
   filename, 
   s1, 
   reopen_on_metadata=handle_metadata, on_close=handle_file, reopen_on_error=fun(_) -> 0., append=true, fallible=true)
-  
-#file duration monitor
-if liquidsoap.version.at_least("2.3.0")then
-thread.run(every=1.,fun() -> file.write(data=string(f1.elapsed()),filename() ^ ".duration"))
-end
-  
+    
 #output to portaudio (use ffmpeg.decode.audio(s1))  
 %ifdef output.portaudio
 if (listen == "1") and (device == "portaudio") then
@@ -480,11 +477,6 @@ f2 = output.file(%ffmpeg(
   filename, 
   s2, 
   reopen_on_metadata=handle_metadata, on_close=handle_file, reopen_on_error=fun(_) -> 0., append=true, fallible=true)
-  
-#file duration monitor
-if liquidsoap.version.at_least("2.3.0")then
-thread.run(every=1.,fun() -> file.write(data=string(f2.elapsed()),filename() ^ ".duration"))
-end
 
 #output to portaudio (use s2 pcm) 
 %ifdef output.portaudio
