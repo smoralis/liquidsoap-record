@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.28 2025-01-18
+#v.1.0.29 2025-01-18
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id>
 
@@ -310,9 +310,14 @@ end
 def post_handle_file(f)
 	
 	if liquidsoap.version.at_least("2.3.0")then
+	try
 	d =  process.read("ffprobe -v quiet -print_format json -select_streams a:0 -show_entries format=duration -of json=compact=1 " ^ string.quote(f))
 	let json.parse ({format = d0}: {format: {duration: string}}) = d
 	f_duration.set(float_of_string(d0.duration))
+	catch err do
+    log(label="liquidsoap-record", level=2,"ffprobe failed to get duration!! - keep file - with error: #{err.message}")
+	f_duration.set(16.)
+	end
 	else
 	f_duration.set(request.duration(resolve_metadata=false,f))
 	end
