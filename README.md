@@ -22,7 +22,7 @@ linux : sudo apt install ffmpeg
 ## command
 
 ```
- liquidsoap record.liq -- -url "url" -dir "directory" -transcode "0" -samplerate "samplerate" -format "format" -codec "codec" -bitrate "bitrate" -listen "0" -device "portaudio|alsa" -log "2" -keep "0" -id "tunein_id"
+ liquidsoap record.liq -- -url "url" -dir "directory" -transcode "0" -samplerate "samplerate" -format "format" -codec "codec" -bitrate "bitrate" -listen "0" -device "portaudio|alsa" -log "2" -keep "0" -id "tunein_id" -relay "0" -host "host" -port "port" -password "password" 
 ```
 
 
@@ -41,6 +41,10 @@ linux : sudo apt install ffmpeg
 | -log       | log level : 1 crtitcal , 2 severe (default) , 3 important, 4 info , 5 debug|
 | -keep         | keep fragments & move them to "incomplete" subfolder : 0 = no (default) , 1 = yes |
 | -id         | tunein id |
+| -relay         | relay output to icecast server: 0 = no (default) , 1 = yes |
+| -host         | icecast host |
+| -port         | icecast port |
+| -password         | icecast password |
 
 
 ## Examples

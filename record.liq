@@ -1,7 +1,7 @@
 #record.liq
-#v.1.0.29 2025-01-18
+#v.1.0.30 2025-01-19
 
-#usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id>
+#usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" 
 
 
 #references-definitions
@@ -31,6 +31,10 @@ tfilename = ref("")
 cover = ref("")
 tunein_id = ref("")
 tunein_id.set(getopt(default=" ","-id"))
+relay = getopt(default="0","-relay")
+host = getopt(default="localhost","-host")
+port = getopt(default="8000","-port")
+password = getopt(default="hackme","-password")
 f_duration = ref(0.)
 
 #create root directory 					   
@@ -261,11 +265,15 @@ def download_cover(m,covername)
 	end
 	
 	if (tunein_id() != " ") then
+	try
 	tjson = http.get("https://feed.tunein.com/profiles/" ^ tunein_id() ^ "/nowPlaying?junk=" ^ string(random.int()))
 	let json.parse ({Secondary}: {Secondary: {Image: string}}) = tjson
 	cover.set(string(Secondary.Image))
 	cov2 = file.download(filename=covername, cover())
 	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " FOUND COVER (tunein): " ^ string(cov2) ^ " : " ^ cover())
+	catch err do
+    log(label="liquidsoap-record", level=3,"Failed to get image - with error: #{err.message}")
+	end
 	end
 	
 end
@@ -277,7 +285,6 @@ nowrecording.set(time.string("[%Y-%m-%d_%H-%M-%S." ^ ext()^ ".rec#s]"))
 #define when to reopen file on new metadata
 def handle_metadata(m)	
 	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " NEW METADATA " ^ string(m))
-#	filename.set(time.string("#{directory}/" ^ folder() ^ "/%Y-%m-%d_%H-%M-%S." ^ ext() ^ ".rec#" ^ string(counter())))	
 	if (m["artist"] != "") and (m["title"] != "") and ((m["artist"] != tmp_artist()) or (m["title"] != tmp_title())) then
 	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " RE-OPEN ARTIST - TITLE")
 	ref.incr(counter)
@@ -287,7 +294,7 @@ def handle_metadata(m)
 	f_title = remove_illegal(m["title"])
 	filename.set("#{directory}/" ^ folder() ^  "/#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()))
 	nowrecording.set("[#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()) ^ "]")
-	thread.run(delay=10.,{download_cover(m,"#{directory}/" ^ folder() ^  "/#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()) ^ ".cover")})
+	thread.run(delay=10.,{download_cover(m,"#{directory}/" ^ folder() ^  "/" ^ string(counter()) ^ ".cover")})
 	log(label="liquidsoap-record", level=2,"#" ^ string(counter()) ^ " New Track Detected. Recording.. #{f_artist} - #{f_title}." ^ ext())	
 	log(label="liquidsoap-record", level=2,"-- press CTRL-C to stop/exit --")
 	true
@@ -311,11 +318,14 @@ def post_handle_file(f)
 	
 	if liquidsoap.version.at_least("2.3.0")then
 	try
-	d =  process.read("ffprobe -v quiet -print_format json -select_streams a:0 -show_entries format=duration -of json=compact=1 " ^ string.quote(f))
-	let json.parse ({format = d0}: {format: {duration: string}}) = d
-	f_duration.set(float_of_string(d0.duration))
+	log(label="liquidsoap-record", level=3,"2.3.0")
+#	log(label="liquidsoap-record", level=3,string(null.get(default=0.,request.duration(resolve_metadata=false,f))))
+	d =  process.read("ffprobe -v quiet -print_format json -select_streams a:0 -show_entries format=duration -of json=compact=1 " ^ process.quote(f))	
+	let json.parse ({format}: {format: {duration: string}}) = d
+	f_duration.set(float_of_string(format.duration))
+	log(label="liquidsoap-record", level=3,string(d))
 	catch err do
-    log(label="liquidsoap-record", level=2,"ffprobe failed to get duration!! - keep file - with error: #{err.message}")
+    log(label="liquidsoap-record", level=3,"ffprobe failed to get duration!! - keep file - with error: #{err.message}")
 	f_duration.set(16.)
 	end
 	else
@@ -353,52 +363,58 @@ end
 
 #file/fragments handling on close
 def handle_file(f)
+
 	let (t,n) = string.split.first(separator=".rec", f)
 	tfilename.set(t)
+	
+	let (q,z) = string.split.first(separator="#", n)
+	let c = "#{directory}/" ^ folder() ^  "/" ^ z ^ ".cover"
+	log(label="liquidsoap-record", level=5,q)
+
 	tmp_filename = f ^ ".tmp"
 	tmp_ext_filename = f ^ "." ^ ext()
 	file.copy(f,tmp_filename)
 	
 #FLAC	
-	if (ext() == "flac") and (file.exists(f ^ ".cover")) then
+	if (ext() == "flac") and (file.exists(c)) then
 	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (FLAC) with COVER " ^ f)
-	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " -i " ^ string.quote(f ^ ".cover")^ " -map 0:a -map 1 -metadata:s:v title=\"Album cover\" -metadata:s:v comment=\"Cover (front)\" -disposition:v attached_pic " ^  string.quote(tmp_ext_filename))
+	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " -i " ^ process.quote(c)^ " -map 0:a -map 1 -metadata:s:v title=\"Album cover\" -metadata:s:v comment=\"Cover (front)\" -disposition:v attached_pic " ^  process.quote(tmp_ext_filename))
 	end
-	if (ext() == "flac") and not (file.exists(f ^ ".cover")) then
+	if (ext() == "flac") and not (file.exists(c)) then
 	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (FLAC) " ^ f)
-	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " " ^  string.quote(tmp_ext_filename)) 
+	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " " ^  process.quote(tmp_ext_filename)) 
 	end
 	
 #AAC	
-	if (ext() == "m4a") and (file.exists(f ^ ".cover")) then
+	if (ext() == "m4a") and (file.exists(c)) then
 	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (AAC) with COVER " ^ f)
-	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " -i " ^ string.quote(f ^ ".cover")^ " -map 0:a:0 -map 1:v:0 -filter:v \"scale=w=500:h=500,format=yuvj420p\" -c:a copy -c:v mjpeg -disposition:v:0 attached_pic " ^  string.quote(tmp_ext_filename))
+	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " -i " ^ process.quote(c)^ " -map 0:a:0 -map 1:v:0 -filter:v \"scale=w=500:h=500,format=yuvj420p\" -c:a copy -c:v mjpeg -disposition:v:0 attached_pic " ^  process.quote(tmp_ext_filename))
 	end
-	if (ext() == "m4a") and not (file.exists(f ^ ".cover")) then
+	if (ext() == "m4a") and not (file.exists(c)) then
 	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (AAC) " ^ f)
-	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " -c:a copy " ^  string.quote(tmp_ext_filename)) 
+	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " -c:a copy " ^  process.quote(tmp_ext_filename)) 
 	end
 	
 #MP3
-	if (ext() == "mp3") and (file.exists(f ^ ".cover")) then
+	if (ext() == "mp3") and (file.exists(c)) then
 	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (MP3) with COVER " ^ f)
-	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " -i " ^ string.quote(f ^ ".cover")^ " -map 0:a:0 -map 1:v:0 -id3v2_version 3 -metadata:s:v title=\"Album cover\" -metadata:s:v comment=\"Cover (front)\" -c:a copy " ^  string.quote(tmp_ext_filename))
+	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " -i " ^ process.quote(c) ^ " -map 0:a:0 -map 1:v:0 -id3v2_version 3 -metadata:s:v title=\"Album cover\" -metadata:s:v comment=\"Cover (front)\" -c:a copy " ^  process.quote(tmp_ext_filename))
 	end
-	if (ext() == "mp3") and not (file.exists(f ^ ".cover")) then
+	if (ext() == "mp3") and not (file.exists(c)) then
 	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (MP3) " ^ f)
-	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " -c:a copy " ^  string.quote(tmp_ext_filename)) 
+	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " -c:a copy " ^  process.quote(tmp_ext_filename)) 
 	end
 	
 #OPUS
 	if ext() == "opus" then
 	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (OPUS) " ^ f)
-	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " -c:a copy " ^  string.quote(tmp_ext_filename)) 
+	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " -c:a copy " ^  process.quote(tmp_ext_filename)) 
 	end
 	
 #VORBIS
 	if ext() == "ogg" then
 	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (VORBIS) " ^ f)
-	process.run("ffmpeg -y -v quiet -i " ^ string.quote(tmp_filename) ^ " -c:a copy " ^  string.quote(tmp_ext_filename)) 
+	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " -c:a copy " ^  process.quote(tmp_ext_filename)) 
 	end
 
 
@@ -407,14 +423,14 @@ def handle_file(f)
 	file.remove(tmp_filename)
 	file.remove(tmp_ext_filename)
 	
-	if file.exists(f ^ ".cover") then
-	file.remove(f ^ ".cover")
+	
+	if file.exists(c) then
+	file.remove(c)
 	end
 	
 	post_handle_file(f)
 	
 end
-
 
 
 #stream copy file writer
@@ -460,6 +476,20 @@ end
 #progess logging  
 thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording " ^ format_time(s1.elapsed()) ^ " " ^ nowrecording()))
 
+#icecast relay mp3 
+ if (relay == "1") then
+  output.icecast(%ffmpeg(
+  format="mp3",
+  %audio(samplerate = 44100, codec = "libmp3lame", b = "320k")),
+  host = host, 
+  port = int_of_string(port),
+  fallible=false,
+  name= "LSR relay [MP3 320]",
+  password = password,
+  mount= "mp3",
+  send_icy_metadata=true,
+  mksafe(ffmpeg.decode.audio(s1)))
+ end
 else
 
 #stream transcoding file writer
@@ -497,7 +527,21 @@ x = output.alsa(mksafe(s2))
 end  
 %endif
 
-
+#icecast relay mp3 
+ if (relay == "1") then
+  output.icecast(%ffmpeg(
+  format="mp3",
+  %audio(samplerate = 44100, codec = "libmp3lame", b = "320k")),
+  host = host, 
+  port = int_of_string(port),
+  fallible=false,
+  name= "LSR relay [MP3 320]",
+  password = password,
+  mount= "mp3",
+  send_icy_metadata=true,
+  mksafe(s2))
+ end
+ 
 #progess logging  
 thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording " ^ format_time(s2.elapsed()) ^ " " ^ nowrecording()))
 
