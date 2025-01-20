@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.30 2025-01-19
+#v.1.0.31 2025-01-20
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" 
 
@@ -364,6 +364,8 @@ end
 #file/fragments handling on close
 def handle_file(f)
 
+	thread.run({
+	
 	let (t,n) = string.split.first(separator=".rec", f)
 	tfilename.set(t)
 	
@@ -430,6 +432,7 @@ def handle_file(f)
 	
 	post_handle_file(f)
 	
+	})
 end
 
 
@@ -442,7 +445,7 @@ log(label="liquidsoap-record", level=2,"--press CTRL-C to stop/exit.")
 
 #default streamcopy mode - audio.copy
 
-s1 = buffer(input.ffmpeg(self_sync=true,poll_delay=0.1,url()))
+s1 = buffer(input.ffmpeg(poll_delay=0.1,url()))
 
 
 s1 = metadata.map(lower_ARTIST, s1)
@@ -450,7 +453,6 @@ s1 = metadata.map(lower_TITLE, s1)
 s1 = metadata.map(strip=true,clean_metadata, s1)
 s1 = metadata.map(process_metadata, s1)
 s1 = metadata.map(add_metadata, s1)
-
 
 f1 = output.file(%ffmpeg(
   format=cformat(),
@@ -497,7 +499,7 @@ log(label="liquidsoap-record", level=2,"STREAM TRANSCODING MODE")
 log(label="liquidsoap-record", level=2,"Recording.. " ^ filename())	
 log(label="liquidsoap-record", level=2,"--press CTRL-C to stop/exit.")
 
-s2 = buffer(input.ffmpeg(self_sync=true,poll_delay=0.1,url()))
+s2 = buffer(input.ffmpeg(poll_delay=0.1,url()))
 
 
 s2 = metadata.map(lower_ARTIST, s2)
