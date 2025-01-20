@@ -314,53 +314,6 @@ def handle_metadata(m)
 	end
 end
 
-def post_handle_file(f)
-	
-	if liquidsoap.version.at_least("2.3.0")then
-	try
-	log(label="liquidsoap-record", level=3,"2.3.0")
-#	log(label="liquidsoap-record", level=3,string(null.get(default=0.,request.duration(resolve_metadata=false,f))))
-	d =  process.read("ffprobe -v quiet -print_format json -select_streams a:0 -show_entries format=duration -of json=compact=1 " ^ process.quote(f))	
-	let json.parse ({format}: {format: {duration: string}}) = d
-	f_duration.set(float_of_string(format.duration))
-	log(label="liquidsoap-record", level=3,string(d))
-	catch err do
-    log(label="liquidsoap-record", level=3,"ffprobe failed to get duration!! - keep file - with error: #{err.message}")
-	f_duration.set(16.)
-	end
-	else
-	f_duration.set(request.duration(resolve_metadata=false,f))
-	end
-	
-	let (t,n) = string.split.first(separator=".rec", f)	
-	tfilename.set(t)
-
-	log(label="liquidsoap-record", level=3,n ^ " POST DURATION " ^ string(f_duration()))
-	log(label="liquidsoap-record", level=3,n ^ " CLOSE " ^ string(f_duration()) ^ " [" ^ format_time(float_of_string(string(f_duration()))) ^ "]  " ^ f )
-	
-	if file.exists(tfilename()) then
-	tfilename.set(time.string(tfilename() ^ "-%Y-%m-%d_%H-%M-%S." ^ ext()))
-	end
-	
-	if (f_duration() < 15.) and (keep == "0") then
-	file.remove(f)
-	log(label="liquidsoap-record", level=3,n ^ " Deleted unwanted fragment " ^ tfilename())
-	
-	elsif (f_duration() < 15.)and (keep == "1") then
-	file.copy(f,tfilename())
-	file.mkdir("#{directory}/" ^ folder() ^ "/incomplete")
-	file.move(t,"#{directory}/" ^ folder() ^ "/incomplete")
-	file.remove(f)
-	log(label="liquidsoap-record", level=3,n ^ " Moved unwanted fragment ID " ^ n ^ " to incomplete.Filename "  ^ tfilename())
-		
-	elsif (f_duration() > 15.) then
-	file.copy(f,tfilename())
-	file.remove(f)
-	log(label="liquidsoap-record", level=3,n ^ " Finished. Saved filename : " ^ tfilename())
-	
-	end
-end
-
 #file/fragments handling on close
 def handle_file(f)
 
@@ -430,7 +383,49 @@ def handle_file(f)
 	file.remove(c)
 	end
 	
-	post_handle_file(f)
+	if liquidsoap.version.at_least("2.3.0")then
+	try
+	log(label="liquidsoap-record", level=3,"2.3.0")
+	log(label="liquidsoap-record", level=3,string(null.get(default=0.,request.duration(resolve_metadata=false,f))))
+	d =  process.read("ffprobe -v quiet -print_format json -select_streams a:0 -show_entries format=duration -of json=compact=1 " ^ process.quote(f))	
+	let json.parse ({format}: {format: {duration: string}}) = d
+	f_duration.set(float_of_string(format.duration))
+	log(label="liquidsoap-record", level=3,string(d))
+	catch err do
+    log(label="liquidsoap-record", level=3,"ffprobe failed to get duration!! - keep file - with error: #{err.message}")
+	f_duration.set(16.)
+	end
+	else
+	f_duration.set(request.duration(resolve_metadata=false,f))
+	end
+	
+	let (t,n) = string.split.first(separator=".rec", f)	
+	tfilename.set(t)
+
+	log(label="liquidsoap-record", level=3,n ^ " POST DURATION " ^ string(f_duration()))
+	log(label="liquidsoap-record", level=3,n ^ " CLOSE " ^ string(f_duration()) ^ " [" ^ format_time(float_of_string(string(f_duration()))) ^ "]  " ^ f )
+	
+	if file.exists(tfilename()) then
+	tfilename.set(time.string(tfilename() ^ "-%Y-%m-%d_%H-%M-%S." ^ ext()))
+	end
+	
+	if (f_duration() < 15.) and (keep == "0") then
+	file.remove(f)
+	log(label="liquidsoap-record", level=3,n ^ " Deleted unwanted fragment " ^ tfilename())
+	
+	elsif (f_duration() < 15.)and (keep == "1") then
+	file.copy(f,tfilename())
+	file.mkdir("#{directory}/" ^ folder() ^ "/incomplete")
+	file.move(t,"#{directory}/" ^ folder() ^ "/incomplete")
+	file.remove(f)
+	log(label="liquidsoap-record", level=3,n ^ " Moved unwanted fragment ID " ^ n ^ " to incomplete.Filename "  ^ tfilename())
+		
+	elsif (f_duration() > 15.) then
+	file.copy(f,tfilename())
+	file.remove(f)
+	log(label="liquidsoap-record", level=3,n ^ " Finished. Saved filename : " ^ tfilename())
+	
+	end
 	
 	})
 end
