@@ -376,28 +376,14 @@ def handle_file(f)
 	file.remove(f)
 	file.copy(tmp_ext_filename,f)
 	file.remove(tmp_filename)
-	file.remove(tmp_ext_filename)
-	
 	
 	if file.exists(c) then
 	file.remove(c)
 	end
-	
-	if liquidsoap.version.at_least("2.3.0")then
-	try
-	log(label="liquidsoap-record", level=3,"2.3.0")
-	log(label="liquidsoap-record", level=3,string(null.get(default=0.,request.duration(resolve_metadata=false,f))))
-	d =  process.read("ffprobe -v quiet -print_format json -select_streams a:0 -show_entries format=duration -of json=compact=1 " ^ process.quote(f))	
-	let json.parse ({format}: {format: {duration: string}}) = d
-	f_duration.set(float_of_string(format.duration))
-	log(label="liquidsoap-record", level=3,string(d))
-	catch err do
-    log(label="liquidsoap-record", level=3,"ffprobe failed to get duration!! - keep file - with error: #{err.message}")
-	f_duration.set(16.)
-	end
-	else
-	f_duration.set(request.duration(resolve_metadata=false,f))
-	end
+
+	f_duration.set(request.duration(resolve_metadata=false,tmp_ext_filename))
+
+	file.remove(tmp_ext_filename)
 	
 	let (t,n) = string.split.first(separator=".rec", f)	
 	tfilename.set(t)
