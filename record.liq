@@ -1,7 +1,7 @@
 #record.liq
-#v.1.0.31 2025-01-20
+#v.1.0.32 2025-01-25
 
-#usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" 
+#usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> 
 
 
 #references-definitions
@@ -35,6 +35,8 @@ relay = getopt(default="0","-relay")
 host = getopt(default="localhost","-host")
 port = getopt(default="8000","-port")
 password = getopt(default="hackme","-password")
+m3u = getopt(default="0","-m3u")
+covers = getopt(default="0","-covers")
 f_duration = ref(0.)
 
 #create root directory 					   
@@ -162,9 +164,11 @@ def format_time(time)
 end
 
 #create a m3u playlist in the folder for reference
+if m3u == "1" then
 m3u = ref("#{directory}/" ^ folder())
 file.mkdir(m3u())
 file.write(data=url(),m3u() ^ "/#listen.m3u")
+end
 
 #lowercase %ARTIST%
 def lower_ARTIST(m)
@@ -243,10 +247,11 @@ def process_metadata(m)
 	end
 end
 
-#add a comment to metadata
+#add a comment/url to metadata
 def add_metadata(m)
 	comment = m["comment"]
-	[("comment","#{comment} - ripped with liquidsoap-record - from:  " ^ url())] 
+	streamurl = m["url"]
+	[("comment","#{comment} - ripped with liquidsoap-record - from:  " ^ url()),("url","#{streamurl}")] 
 end
 
 def download_cover(m,covername)
@@ -294,7 +299,9 @@ def handle_metadata(m)
 	f_title = remove_illegal(m["title"])
 	filename.set("#{directory}/" ^ folder() ^  "/#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()))
 	nowrecording.set("[#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()) ^ "]")
+	if covers == "1" then
 	thread.run(delay=10.,{download_cover(m,"#{directory}/" ^ folder() ^  "/" ^ string(counter()) ^ ".cover")})
+	end
 	log(label="liquidsoap-record", level=2,"#" ^ string(counter()) ^ " New Track Detected. Recording.. #{f_artist} - #{f_title}." ^ ext())	
 	log(label="liquidsoap-record", level=2,"-- press CTRL-C to stop/exit --")
 	true
@@ -316,8 +323,6 @@ end
 
 #file/fragments handling on close
 def handle_file(f)
-
-	thread.run({
 	
 	let (t,n) = string.split.first(separator=".rec", f)
 	tfilename.set(t)
@@ -326,8 +331,8 @@ def handle_file(f)
 	let c = "#{directory}/" ^ folder() ^  "/" ^ z ^ ".cover"
 	log(label="liquidsoap-record", level=5,q)
 
-	tmp_filename = f ^ ".tmp"
-	tmp_ext_filename = f ^ "." ^ ext()
+	let tmp_filename = "#{directory}/" ^ folder() ^  "/" ^ z ^ ".tmp"
+	let tmp_ext_filename = "#{directory}/" ^ folder() ^  "/" ^ z ^ "." ^ ext()
 	file.copy(f,tmp_filename)
 	
 #FLAC	
@@ -380,9 +385,22 @@ def handle_file(f)
 	if file.exists(c) then
 	file.remove(c)
 	end
-
-	f_duration.set(request.duration(resolve_metadata=false,tmp_ext_filename))
-
+	
+	f_duration.set(null.get(default=0.,request.duration(resolve_metadata=false,tmp_ext_filename)))
+	log(label="liquidsoap-record", level=3,n ^ " Request duration: " ^ string(f_duration()))
+	
+	if f_duration() == 0. then
+	try
+	log(label="liquidsoap-record", level=3,n ^ " FFPROBE duration fallback (request=0)")
+	d =  process.read("ffprobe -v quiet -print_format json -select_streams a:0 -show_entries format=duration -of json=compact=1 " ^ process.quote(tmp_ext_filename))
+	let json.parse ({format = d0}: {format: {duration: string}}) = d
+	f_duration.set(float_of_string(d0.duration))
+	catch err do
+    log(label="liquidsoap-record", level=3," FFPROBE failed to get duration!! - keep file - with error: #{err.message}")
+	f_duration.set(16.)
+	end
+	end
+	
 	file.remove(tmp_ext_filename)
 	
 	let (t,n) = string.split.first(separator=".rec", f)	
@@ -413,7 +431,6 @@ def handle_file(f)
 	
 	end
 	
-	})
 end
 
 
@@ -469,8 +486,9 @@ thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording 
   fallible=false,
   name= "LSR relay [MP3 320]",
   password = password,
-  mount= "mp3",
+  mount= "lsr",
   send_icy_metadata=true,
+  icy_metadata=["song", "url"],
   mksafe(ffmpeg.decode.audio(s1)))
  end
 else
@@ -520,8 +538,9 @@ end
   fallible=false,
   name= "LSR relay [MP3 320]",
   password = password,
-  mount= "mp3",
+  mount= "lsr",
   send_icy_metadata=true,
+  icy_metadata=["song", "url"],
   mksafe(s2))
  end
  

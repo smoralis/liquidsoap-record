@@ -20,7 +20,7 @@ linux : sudo apt install ffmpeg
 ## command
 
 ```
- liquidsoap record.liq -- -url "url" -dir "directory" -transcode "0" -samplerate "samplerate" -format "format" -codec "codec" -bitrate "bitrate" -listen "0" -device "portaudio|alsa" -log "2" -keep "0" -id "tunein_id" -relay "0" -host "host" -port "port" -password "password" 
+ liquidsoap record.liq -- -url "url" -dir "directory" -transcode "0" -samplerate "samplerate" -format "format" -codec "codec" -bitrate "bitrate" -listen "0" -device "portaudio|alsa" -log "2" -keep "0" -id "tunein_id" -relay "0" -host "host" -port "port" -password "password" -m3u "0" -covers "0"
 ```
 
 
@@ -43,6 +43,8 @@ linux : sudo apt install ffmpeg
 | -host         | icecast host |
 | -port         | icecast port |
 | -password         | icecast password |
+| -m3u         | create listen.m3u : 0 = no (default) , 1 = yes|
+| -covers       | download covers : 0 = no (default) , 1 = yes |
 
 
 ## Examples
@@ -60,7 +62,7 @@ liquidsoap record.liq -- -url "https://stream.radioparadise.com/rock-flacm" -dir
 
 Stream Copy with tunein_id (e.g) https://tunein.com/radio/Roxx-Radio-s240638/
 ```
-liquidsoap record.liq -- -url "http://stream.radiojar.com/aay95tkmb" -dir "c:\music" -id s240638
+liquidsoap record.liq -- -url "http://stream.radiojar.com/aay95tkmb" -dir "c:\music" -covers 1 -id s240638
 ```
 
 ## Transcoding
