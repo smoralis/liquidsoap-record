@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.32 2025-01-25
+#v.1.0.33 2025-01-30
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> 
 
@@ -200,35 +200,35 @@ def split_title(m)
 		let (a,t) = string.split.first(separator=" - ", m["title"])
 		artist.set(string.trim(a))
 		title.set(string.trim(t))
-		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Splitted %title% to %artist%,%title%")
-		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Artist: " ^ artist())
-		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Title : " ^ title())
+		log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " Splitted %title% to %artist%,%title%")
+		log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " Artist: " ^ artist())
+		log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " Title : " ^ title())
 		end
 		if string.contains(substring=" ? ", m["title"]) then
 		let (a,t) = string.split.first(separator=" ? ", m["title"])
 		artist.set(string.trim(a))
 		title.set(string.trim(t))
-		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Splitted %title% to %artist%,%title%")
-		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Artist: " ^ artist())
-		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Title : " ^ title())
+		log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " Splitted %title% to %artist%,%title%")
+		log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " Artist: " ^ artist())
+		log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " Title : " ^ title())
 		end
 		if string.contains(substring=" | ", title()) then
 		let (l,r) = string.split.first(separator=" | ", title())
 		title.set(string.trim(l))
-		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Stripped from %title%: | " ^ r)
-		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Title : " ^ title())
+		log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " Stripped from %title%: | " ^ r)
+		log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " Title : " ^ title())
 		end
 		if string.contains(substring=" [", title()) then
 		let (l,r) = string.split.first(separator=" [", title())
 		title.set(string.trim(l))
-		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Stripped from %title%: [" ^ r)
-		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Title : " ^ title())
+		log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " Stripped from %title%: [" ^ r)
+		log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " Title : " ^ title())
 		end
 		if string.contains(substring=" - ", title()) then
 		let (l,r) = string.split.first(separator=" - ", title())
 		title.set(string.trim(l))
-		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Stripped from %title%: - " ^ r)
-		log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Title : " ^ title())
+		log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " Stripped from %title%: - " ^ r)
+		log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " Title : " ^ title())
 		end
 	end
 end
@@ -259,14 +259,14 @@ def download_cover(m,covername)
 
 	if (m["url"] != "") and string.contains(substring="?", m["url"]) then
 	let (q,t) = string.split.first(separator="?", m["url"])
-	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " Stripped from %url%: [" ^ t)
+	log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " Stripped from %url%: [" ^ t)
 	cover.set(q)
 	else
 	cover.set(m["url"])
 	end
 	if (cover() != "") and (string.contains(suffix = "jpg",cover()) or string.contains(suffix = "png",cover())) then
 	cov = file.download(filename=covername, cover())
-	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " FOUND COVER (url): " ^ string(cov) ^ " : " ^ cover())
+	log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " FOUND COVER (url): " ^ string(cov) ^ " : " ^ cover())
 	end
 	
 	if (tunein_id() != " ") then
@@ -275,7 +275,7 @@ def download_cover(m,covername)
 	let json.parse ({Secondary}: {Secondary: {Image: string}}) = tjson
 	cover.set(string(Secondary.Image))
 	cov2 = file.download(filename=covername, cover())
-	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " FOUND COVER (tunein): " ^ string(cov2) ^ " : " ^ cover())
+	log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " FOUND COVER (tunein): " ^ string(cov2) ^ " : " ^ cover())
 	catch err do
     log(label="liquidsoap-record", level=3,"Failed to get image - with error: #{err.message}")
 	end
@@ -289,9 +289,9 @@ nowrecording.set(time.string("[%Y-%m-%d_%H-%M-%S." ^ ext()^ ".rec#s]"))
 
 #define when to reopen file on new metadata
 def handle_metadata(m)	
-	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " NEW METADATA " ^ string(m))
+	log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " NEW METADATA " ^ string(m))
 	if (m["artist"] != "") and (m["title"] != "") and ((m["artist"] != tmp_artist()) or (m["title"] != tmp_title())) then
-	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " RE-OPEN ARTIST - TITLE")
+	log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " RE-OPEN ARTIST - TITLE")
 	ref.incr(counter)
 	tmp_artist.set(m["artist"])
 	tmp_title.set(m["title"])
@@ -300,23 +300,23 @@ def handle_metadata(m)
 	filename.set("#{directory}/" ^ folder() ^  "/#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()))
 	nowrecording.set("[#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()) ^ "]")
 	if covers == "1" then
-	thread.run(delay=10.,{download_cover(m,"#{directory}/" ^ folder() ^  "/" ^ string(counter()) ^ ".cover")})
+	thread.run(delay=10.,{download_cover(m,"#{directory}/" ^ folder() ^  "/rec#" ^ string(counter()) ^ ".cover")})
 	end
-	log(label="liquidsoap-record", level=2,"#" ^ string(counter()) ^ " New Track Detected. Recording.. #{f_artist} - #{f_title}." ^ ext())	
+	log(label="liquidsoap-record", level=2,"rec#" ^ string(counter()) ^ " New Track Detected. Recording.. #{f_artist} - #{f_title}." ^ ext())	
 	log(label="liquidsoap-record", level=2,"-- press CTRL-C to stop/exit --")
 	true
 	elsif (m["artist"] == "") and (m["title"] != "") and (m["title"] != tmp_title()) then
-	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " RE-OPEN TITLE")
+	log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " RE-OPEN TITLE")
 	ref.incr(counter)
 	tmp_title.set(m["title"])
 	f_title = remove_illegal(m["title"])
 	filename.set("#{directory}/" ^ folder() ^  "/#{f_title}." ^ ext() ^ ".rec#" ^ string(counter()))
 	nowrecording.set("[#{f_title}." ^ ext() ^ ".rec#" ^ string(counter()) ^ "]")
-	log(label="liquidsoap-record", level=2,"#" ^ string(counter()) ^ " New Track Detected. Recording.. #{f_title}." ^ ext())	
+	log(label="liquidsoap-record", level=2,"rec#" ^ string(counter()) ^ " New Track Detected. Recording.. #{f_title}." ^ ext())	
 	log(label="liquidsoap-record", level=2,"-- press CTRL-C to stop/exit --")
 	true	
 	else
-	log(label="liquidsoap-record", level=3,"#" ^ string(counter()) ^ " FALSE - NOT RE-OPENING" )
+	log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " FALSE - NOT RE-OPENING" )
 	false
 	end
 end
@@ -324,62 +324,57 @@ end
 #file/fragments handling on close
 def handle_file(f)
 	
-	let (t,n) = string.split.first(separator=".rec", f)
-	tfilename.set(t)
-	
-	let (q,z) = string.split.first(separator="#", n)
-	let c = "#{directory}/" ^ folder() ^  "/" ^ z ^ ".cover"
-	log(label="liquidsoap-record", level=5,q)
-
-	let tmp_filename = "#{directory}/" ^ folder() ^  "/" ^ z ^ ".tmp"
-	let tmp_ext_filename = "#{directory}/" ^ folder() ^  "/" ^ z ^ "." ^ ext()
+	tfilename.set(path.remove_extension(f))
+	let tno = file.extension(leading_dot=false,f)
+	let c = "#{directory}/" ^ folder() ^  "/" ^ tno ^ ".cover"
+	let tmp_filename = "#{directory}/" ^ folder() ^  "/" ^ tno ^ ".tmp"
+	let tmp_ext_filename = "#{directory}/" ^ folder() ^  "/" ^ tno ^ "." ^ ext()
 	file.copy(f,tmp_filename)
 	
 #FLAC	
 	if (ext() == "flac") and (file.exists(c)) then
-	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (FLAC) with COVER " ^ f)
+	log(label="liquidsoap-record", level=3,tno ^ " FFMPEG-reprocess (FLAC) with COVER " ^ f)
 	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " -i " ^ process.quote(c)^ " -map 0:a -map 1 -metadata:s:v title=\"Album cover\" -metadata:s:v comment=\"Cover (front)\" -disposition:v attached_pic " ^  process.quote(tmp_ext_filename))
 	end
 	if (ext() == "flac") and not (file.exists(c)) then
-	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (FLAC) " ^ f)
+	log(label="liquidsoap-record", level=3,tno ^ " FFMPEG-reprocess (FLAC) " ^ f)
 	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " " ^  process.quote(tmp_ext_filename)) 
 	end
 	
 #AAC	
 	if (ext() == "m4a") and (file.exists(c)) then
-	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (AAC) with COVER " ^ f)
+	log(label="liquidsoap-record", level=3,tno ^ " FFMPEG-reprocess (AAC) with COVER " ^ f)
 	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " -i " ^ process.quote(c)^ " -map 0:a:0 -map 1:v:0 -filter:v \"scale=w=500:h=500,format=yuvj420p\" -c:a copy -c:v mjpeg -disposition:v:0 attached_pic " ^  process.quote(tmp_ext_filename))
 	end
 	if (ext() == "m4a") and not (file.exists(c)) then
-	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (AAC) " ^ f)
+	log(label="liquidsoap-record", level=3,tno ^ " FFMPEG-reprocess (AAC) " ^ f)
 	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " -c:a copy " ^  process.quote(tmp_ext_filename)) 
 	end
 	
 #MP3
 	if (ext() == "mp3") and (file.exists(c)) then
-	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (MP3) with COVER " ^ f)
+	log(label="liquidsoap-record", level=3,tno ^ " FFMPEG-reprocess (MP3) with COVER " ^ f)
 	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " -i " ^ process.quote(c) ^ " -map 0:a:0 -map 1:v:0 -id3v2_version 3 -metadata:s:v title=\"Album cover\" -metadata:s:v comment=\"Cover (front)\" -c:a copy " ^  process.quote(tmp_ext_filename))
 	end
 	if (ext() == "mp3") and not (file.exists(c)) then
-	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (MP3) " ^ f)
+	log(label="liquidsoap-record", level=3,tno ^ " FFMPEG-reprocess (MP3) " ^ f)
 	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " -c:a copy " ^  process.quote(tmp_ext_filename)) 
 	end
 	
 #OPUS
 	if ext() == "opus" then
-	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (OPUS) " ^ f)
+	log(label="liquidsoap-record", level=3,tno ^ " FFMPEG-reprocess (OPUS) " ^ f)
 	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " -c:a copy " ^  process.quote(tmp_ext_filename)) 
 	end
 	
 #VORBIS
 	if ext() == "ogg" then
-	log(label="liquidsoap-record", level=3,n ^ " FFMPEG-reprocess (VORBIS) " ^ f)
+	log(label="liquidsoap-record", level=3,tno ^ " FFMPEG-reprocess (VORBIS) " ^ f)
 	process.run("ffmpeg -y -v quiet -i " ^ process.quote(tmp_filename) ^ " -c:a copy " ^  process.quote(tmp_ext_filename)) 
 	end
 
 
 	file.remove(f)
-	file.copy(tmp_ext_filename,f)
 	file.remove(tmp_filename)
 	
 	if file.exists(c) then
@@ -387,11 +382,11 @@ def handle_file(f)
 	end
 	
 	f_duration.set(null.get(default=0.,request.duration(resolve_metadata=false,tmp_ext_filename)))
-	log(label="liquidsoap-record", level=3,n ^ " Request duration: " ^ string(f_duration()))
+	log(label="liquidsoap-record", level=3,tno ^ " Request duration: " ^ string(f_duration()))
 	
 	if f_duration() == 0. then
 	try
-	log(label="liquidsoap-record", level=3,n ^ " FFPROBE duration fallback (request=0)")
+	log(label="liquidsoap-record", level=3,tno ^ " FFPROBE duration fallback (request=0)")
 	d =  process.read("ffprobe -v quiet -print_format json -select_streams a:0 -show_entries format=duration -of json=compact=1 " ^ process.quote(tmp_ext_filename))
 	let json.parse ({format = d0}: {format: {duration: string}}) = d
 	f_duration.set(float_of_string(d0.duration))
@@ -399,35 +394,33 @@ def handle_file(f)
     log(label="liquidsoap-record", level=3," FFPROBE failed to get duration!! - keep file - with error: #{err.message}")
 	f_duration.set(16.)
 	end
-	end
+	end	
 	
-	file.remove(tmp_ext_filename)
-	
-	let (t,n) = string.split.first(separator=".rec", f)	
-	tfilename.set(t)
+	log(label="liquidsoap-record", level=3,tno ^ " POST DURATION " ^ string(f_duration()))
+	log(label="liquidsoap-record", level=3,tno ^ " CLOSE " ^ string(f_duration()) ^ " [" ^ format_time(float_of_string(string(f_duration()))) ^ "]  " ^ f )
 
-	log(label="liquidsoap-record", level=3,n ^ " POST DURATION " ^ string(f_duration()))
-	log(label="liquidsoap-record", level=3,n ^ " CLOSE " ^ string(f_duration()) ^ " [" ^ format_time(float_of_string(string(f_duration()))) ^ "]  " ^ f )
-	
 	if file.exists(tfilename()) then
 	tfilename.set(time.string(tfilename() ^ "-%Y-%m-%d_%H-%M-%S." ^ ext()))
+	file.copy(tmp_ext_filename,tfilename())
+	log(label="liquidsoap-record", level=3,tno ^ " Filename exists. Appending timestamp to filename. New filename: "  ^ tfilename())
+	else
+	file.copy(tmp_ext_filename,tfilename())
 	end
 	
+	file.remove(tmp_ext_filename)	
+	
 	if (f_duration() < 15.) and (keep == "0") then
-	file.remove(f)
-	log(label="liquidsoap-record", level=3,n ^ " Deleted unwanted fragment " ^ tfilename())
+	file.remove(tfilename())
+	log(label="liquidsoap-record", level=3,tno ^ " Deleted unwanted fragment " ^ tfilename())
 	
 	elsif (f_duration() < 15.)and (keep == "1") then
-	file.copy(f,tfilename())
 	file.mkdir("#{directory}/" ^ folder() ^ "/incomplete")
-	file.move(t,"#{directory}/" ^ folder() ^ "/incomplete")
-	file.remove(f)
-	log(label="liquidsoap-record", level=3,n ^ " Moved unwanted fragment ID " ^ n ^ " to incomplete.Filename "  ^ tfilename())
+	file.move(tfilename(),"#{directory}/" ^ folder() ^ "/incomplete")
+	file.remove(tfilename())
+	log(label="liquidsoap-record", level=3,tno ^ " Moved unwanted fragment ID " ^ tno ^ " to incomplete.Filename "  ^ tfilename())
 		
 	elsif (f_duration() > 15.) then
-	file.copy(f,tfilename())
-	file.remove(f)
-	log(label="liquidsoap-record", level=3,n ^ " Finished. Saved filename : " ^ tfilename())
+	log(label="liquidsoap-record", level=3,tno ^ " Finished. Keeping file : " ^ tfilename())
 	
 	end
 	
