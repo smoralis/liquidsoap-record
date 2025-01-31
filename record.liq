@@ -1,5 +1,5 @@
 #record.liq
-#v.1.0.33 2025-01-30
+#v.1.0.34 2025-01-31
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> 
 
@@ -243,7 +243,7 @@ def process_metadata(m)
 	elsif (artist() == "") and (title() != "") then
 	[("title",title())] 
 	else
-	[] 
+	[]
 	end
 end
 
@@ -285,7 +285,7 @@ end
 
 #base filename on start
 filename = ref(time.string("#{directory}/" ^ folder() ^ "/%Y-%m-%d_%H-%M-%S." ^ ext()^ ".rec#s"))
-nowrecording.set(time.string("[%Y-%m-%d_%H-%M-%S." ^ ext()^ ".rec#s]"))
+nowrecording.set(time.string("%Y-%m-%d_%H-%M-%S." ^ ext()^ ".rec#s"))
 
 #define when to reopen file on new metadata
 def handle_metadata(m)	
@@ -298,7 +298,7 @@ def handle_metadata(m)
 	f_artist = remove_illegal(m["artist"])
 	f_title = remove_illegal(m["title"])
 	filename.set("#{directory}/" ^ folder() ^  "/#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()))
-	nowrecording.set("[#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()) ^ "]")
+	nowrecording.set("#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()))
 	if covers == "1" then
 	thread.run(delay=10.,{download_cover(m,"#{directory}/" ^ folder() ^  "/rec#" ^ string(counter()) ^ ".cover")})
 	end
@@ -311,7 +311,7 @@ def handle_metadata(m)
 	tmp_title.set(m["title"])
 	f_title = remove_illegal(m["title"])
 	filename.set("#{directory}/" ^ folder() ^  "/#{f_title}." ^ ext() ^ ".rec#" ^ string(counter()))
-	nowrecording.set("[#{f_title}." ^ ext() ^ ".rec#" ^ string(counter()) ^ "]")
+	nowrecording.set("#{f_title}." ^ ext() ^ ".rec#" ^ string(counter()))
 	log(label="liquidsoap-record", level=2,"rec#" ^ string(counter()) ^ " New Track Detected. Recording.. #{f_title}." ^ ext())	
 	log(label="liquidsoap-record", level=2,"-- press CTRL-C to stop/exit --")
 	true	
@@ -481,6 +481,7 @@ thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording 
   password = password,
   mount= "lsr",
   send_icy_metadata=true,
+  icy_song=fun(_) -> path.remove_extension(path.remove_extension(nowrecording())),
   icy_metadata=["song", "url"],
   mksafe(ffmpeg.decode.audio(s1)))
  end
@@ -533,6 +534,7 @@ end
   password = password,
   mount= "lsr",
   send_icy_metadata=true,
+  icy_song=fun(_) -> path.remove_extension(path.remove_extension(nowrecording())),
   icy_metadata=["song", "url"],
   mksafe(s2))
  end
