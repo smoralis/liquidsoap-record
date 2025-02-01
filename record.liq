@@ -1,7 +1,7 @@
 #record.liq
-#v.1.0.34 2025-01-31
+#v.1.0.35 2025-02-01
 
-#usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> 
+#usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> 
 
 
 #references-definitions
@@ -37,6 +37,7 @@ port = getopt(default="8000","-port")
 password = getopt(default="hackme","-password")
 m3u = getopt(default="0","-m3u")
 covers = getopt(default="0","-covers")
+single = getopt(default="0","-single")
 f_duration = ref(0.)
 
 #create root directory 					   
@@ -276,6 +277,7 @@ def download_cover(m,covername)
 	cover.set(string(Secondary.Image))
 	cov2 = file.download(filename=covername, cover())
 	log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " FOUND COVER (tunein): " ^ string(cov2) ^ " : " ^ cover())
+	icy.update_metadata(host=host,port=int_of_string(port),user="source",password=password,mount="lsr",[("artist",artist()),("title",title()),("url",cover())])
 	catch err do
     log(label="liquidsoap-record", level=3,"Failed to get image - with error: #{err.message}")
 	end
@@ -289,6 +291,7 @@ nowrecording.set(time.string("%Y-%m-%d_%H-%M-%S." ^ ext()^ ".rec#s"))
 
 #define when to reopen file on new metadata
 def handle_metadata(m)	
+	if single != "1" then
 	log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " NEW METADATA " ^ string(m))
 	if (m["artist"] != "") and (m["title"] != "") and ((m["artist"] != tmp_artist()) or (m["title"] != tmp_title())) then
 	log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " RE-OPEN ARTIST - TITLE")
@@ -300,7 +303,7 @@ def handle_metadata(m)
 	filename.set("#{directory}/" ^ folder() ^  "/#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()))
 	nowrecording.set("#{f_artist} - #{f_title}." ^ ext() ^ ".rec#" ^ string(counter()))
 	if covers == "1" then
-	thread.run(delay=10.,{download_cover(m,"#{directory}/" ^ folder() ^  "/rec#" ^ string(counter()) ^ ".cover")})
+	thread.run(delay=5.,{download_cover(m,"#{directory}/" ^ folder() ^  "/rec#" ^ string(counter()) ^ ".cover")})
 	end
 	log(label="liquidsoap-record", level=2,"rec#" ^ string(counter()) ^ " New Track Detected. Recording.. #{f_artist} - #{f_title}." ^ ext())	
 	log(label="liquidsoap-record", level=2,"-- press CTRL-C to stop/exit --")
@@ -317,6 +320,9 @@ def handle_metadata(m)
 	true	
 	else
 	log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " FALSE - NOT RE-OPENING" )
+	false
+	end
+	else
 	false
 	end
 end
@@ -467,7 +473,7 @@ end
 %endif
 
 #progess logging  
-thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording " ^ format_time(s1.elapsed()) ^ " " ^ nowrecording()))
+thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording " ^ format_time(s1.time()) ^ " " ^ nowrecording()))
 
 #icecast relay mp3 
  if (relay == "1") then
@@ -485,6 +491,7 @@ thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording 
   icy_metadata=["song", "url"],
   mksafe(ffmpeg.decode.audio(s1)))
  end
+  
 else
 
 #stream transcoding file writer
@@ -540,6 +547,6 @@ end
  end
  
 #progess logging  
-thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording " ^ format_time(s2.elapsed()) ^ " " ^ nowrecording()))
+thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording " ^ format_time(s2.time()) ^ " " ^ nowrecording()))
 
 end

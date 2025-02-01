@@ -20,7 +20,7 @@ linux : sudo apt install ffmpeg
 ## command
 
 ```
- liquidsoap record.liq -- -url "url" -dir "directory" -transcode "0" -samplerate "samplerate" -format "format" -codec "codec" -bitrate "bitrate" -listen "0" -device "portaudio|alsa" -log "2" -keep "0" -id "tunein_id" -relay "0" -host "host" -port "port" -password "password" -m3u "0" -covers "0"
+ liquidsoap record.liq -- -url "url" -dir "directory" -transcode "0" -samplerate "samplerate" -format "format" -codec "codec" -bitrate "bitrate" -listen "0" -device "portaudio|alsa" -log "2" -keep "0" -id "tunein_id" -relay "0" -host "host" -port "port" -password "password" -m3u "0" -covers "0" -single "0"
 ```
 
 
@@ -45,6 +45,7 @@ linux : sudo apt install ffmpeg
 | -password         | icecast password |
 | -m3u         | create listen.m3u : 0 = no (default) , 1 = yes|
 | -covers       | download covers : 0 = no (default) , 1 = yes |
+| -single       | rip to single file (no splitting into tracks) : 0 = no (default) , 1 = yes |
 
 
 ## Examples
