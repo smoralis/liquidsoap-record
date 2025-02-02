@@ -277,7 +277,9 @@ def download_cover(m,covername)
 	cover.set(string(Secondary.Image))
 	cov2 = file.download(filename=covername, cover())
 	log(label="liquidsoap-record", level=3,"rec#" ^ string(counter()) ^ " FOUND COVER (tunein): " ^ string(cov2) ^ " : " ^ cover())
+	if (relay == "1") then
 	icy.update_metadata(host=host,port=int_of_string(port),user="source",password=password,mount="lsr",[("artist",artist()),("title",title()),("url",cover())])
+	end
 	catch err do
     log(label="liquidsoap-record", level=3,"Failed to get image - with error: #{err.message}")
 	end
