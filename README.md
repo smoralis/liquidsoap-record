@@ -20,7 +20,7 @@ linux : sudo apt install ffmpeg
 ## command
 
 ```
- liquidsoap record.liq -- -url "url" -dir "directory" -transcode "0" -samplerate "samplerate" -format "format" -codec "codec" -bitrate "bitrate" -listen "0" -device "portaudio|alsa" -log "2" -keep "0" -id "tunein_id" -relay "0" -host "host" -port "port" -password "password" -m3u "0" -covers "0" -single "0"
+ liquidsoap record.liq -- -url "url" -dir "directory" -station "station" -transcode "0" -samplerate "samplerate" -format "format" -codec "codec" -bitrate "bitrate" -listen "0" -device "portaudio|alsa" -log "2" -keep "0" -id "tunein_id" -relay "0" -host "host" -port "port" -password "password" -m3u "0" -covers "0" -single "0" -timeout "0"
 ```
 
 
@@ -29,6 +29,7 @@ linux : sudo apt install ffmpeg
 | ------------- | ------------- |
 | -url          | listen url |
 | -dir          | directory to save files |
+| -station          | subdirectory - station name to save files |
 | -transcode         | transcode : 0 = no (default) , 1 = yes|
 | -samplerate         | encoder samplerate|
 | -format          | encoder container format |
@@ -46,6 +47,7 @@ linux : sudo apt install ffmpeg
 | -m3u         | create listen.m3u : 0 = no (default) , 1 = yes|
 | -covers       | download covers : 0 = no (default) , 1 = yes |
 | -single       | rip to single file (no splitting into tracks) : 0 = no (default) , 1 = yes |
+| -timeout       | timeout in seconds to stop recording and exit script : 0 (default) , number (e.g 3600 for 1hour) |
 
 
 ## Examples

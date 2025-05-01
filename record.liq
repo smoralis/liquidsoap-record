@@ -1,7 +1,7 @@
 #record.liq
-#v.1.0.35 2025-02-01
+#v.1.0.36 2025-05-01
 
-#usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> 
+#usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -station "<station>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> -timeout <0> 
 
 
 #references-definitions
@@ -11,6 +11,8 @@ cformat = ref("")
 codec_name = ref("")
 url.set(getopt(default=" ","-url"))
 directory = getopt(default=" ","-dir")
+station = ref("")
+station.set(getopt(default=" ","-station"))
 folder = ref("")
 transcode = getopt(default="0","-transcode")
 samplerate = getopt(default="44100","-samplerate")
@@ -21,6 +23,8 @@ listen = getopt(default="0","-listen")
 device = getopt(default="portaudio","-device")
 logoutput = getopt(default="2","-log")
 keep = getopt(default="0","-keep")
+timeout = ref("")
+timeout.set(getopt(default="0","-timeout"))
 artist = ref("")
 title = ref("")
 tmp_artist = ref("")
@@ -39,6 +43,7 @@ m3u = getopt(default="0","-m3u")
 covers = getopt(default="0","-covers")
 single = getopt(default="0","-single")
 f_duration = ref(0.)
+
 
 #create root directory 					   
 file.mkdir(directory)
@@ -93,13 +98,17 @@ split_url()
 #folder remove illegal
 folder.set(string.trim(remove_illegal(url())))
 
-#ffprobe icy-name to use as folder name
+#ffprobe icy-name to use as folder name or use -station 
 def ffprobe_name() 
+  if station() != " " then
+	folder.set(string.trim(remove_illegal(station())))
+	else
   icy_name =  process.read("ffprobe -v quiet -print_format json -select_streams a:0 -show_entries format=format_tags:format_tags=icy-name -of default=noprint_wrappers=1:nokey=1 " ^ url())
   icy_name = r/(\r\n|\n|\r)/g.replace(fun(_) -> "",icy_name)
   log(label="liquidsoap-record", level=2,"FFPROBE icy-name: #{icy_name}")
   if icy_name != "" then
   folder.set(string.trim(remove_illegal(icy_name)))
+  end
   end
   log(label="liquidsoap-record", level=2,"Saving to folder: " ^ folder())
 end
@@ -444,7 +453,7 @@ log(label="liquidsoap-record", level=2,"--press CTRL-C to stop/exit.")
 
 #default streamcopy mode - audio.copy
 
-s1 = buffer(input.ffmpeg(poll_delay=0.1,url()))
+s1 = buffer(buffer=5.0,input.ffmpeg(poll_delay=0.1,url()))
 
 
 s1 = metadata.map(lower_ARTIST, s1)
@@ -494,6 +503,16 @@ thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording 
   mksafe(ffmpeg.decode.audio(s1)))
  end
   
+#watchdog timer
+def watchdog_s1()
+if (timeout() != "0") and (s1.time() > string.to_float(timeout())) then
+log(label="liquidsoap-record", level=2,"Defined Timeout achieved , Exiting ...")
+shutdown()
+end
+end
+
+thread.run(every=1.,watchdog_s1)
+
 else
 
 #stream transcoding file writer
@@ -501,7 +520,7 @@ log(label="liquidsoap-record", level=2,"STREAM TRANSCODING MODE")
 log(label="liquidsoap-record", level=2,"Recording.. " ^ filename())	
 log(label="liquidsoap-record", level=2,"--press CTRL-C to stop/exit.")
 
-s2 = buffer(input.ffmpeg(poll_delay=0.1,url()))
+s2 = buffer(buffer=5.0,input.ffmpeg(poll_delay=0.1,url()))
 
 
 s2 = metadata.map(lower_ARTIST, s2)
@@ -550,5 +569,15 @@ end
  
 #progess logging  
 thread.run(every=30.,fun() -> log(label="liquidsoap-record", level=2,"Recording " ^ format_time(s2.time()) ^ " " ^ nowrecording()))
+
+#watchdog timer
+def watchdog_s2()
+if (timeout() != "0") and (s2.time() > string.to_float(timeout())) then
+log(label="liquidsoap-record", level=2,"Defined Timeout achieved , Exiting ...")
+shutdown()
+end
+end
+
+thread.run(every=1.,watchdog_s2)
 
 end
