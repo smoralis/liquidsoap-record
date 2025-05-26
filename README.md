@@ -76,7 +76,7 @@ Transcoding suggestions table
 | ------------- | ------------- |
 | OPUS          | -samplerate 48000 -format opus -codec libopus -bitrate 128k|
 | MP3         | -samplerate 44100 -format mp3 -codec libmp3lame -bitrate 320k |
-| AAC        | -samplerate 44100 -format m4a -codec aac -bitrate 320k|
+| AAC        | -samplerate 44100 -format mp4 -codec aac -bitrate 320k|
 | FLAC        | -samplerate 44100 -format flac -codec flac|
 
 
