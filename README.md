@@ -205,3 +205,7 @@ keep the original (uncovered) recording instead of losing it.
 - `ffmpeg` / `ffprobe`
 - Python 3 (for the GUI and `build_cover_metadata.py`); Tkinter for the GUI
 - `mpv` or `ffplay` (optional, for the built-in Icecast relay player)
+
+## GUI Screenshot
+
+![Alt text](/screenshot.png?raw=true "liquidsoap-record-ui")
