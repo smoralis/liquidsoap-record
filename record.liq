@@ -1,5 +1,5 @@
 #record.liq
-#Version 1.0.48 2026-09-07
+#Version 1.0.49 2026-09-08
 #Liquidsoap 2.4.5
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -station "<station>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> -timeout <0>
@@ -1699,6 +1699,30 @@ def handle_file_async(f) =
 end
 
 # ------------------------------------------------------------
+# SHUTDOWN-AWARE DISPATCH
+# ------------------------------------------------------------
+# During normal recording, track-boundary closes (reopen_on_metadata) go
+# through handle_file_async so post-processing doesn't block the recorder.
+# On shutdown, the final close should be processed synchronously so the
+# process doesn't exit before post-processing (cover art, transcode, etc.)
+# has actually finished.
+
+shutting_down = ref(false)
+
+def handle_file_dispatch(f) =
+  if
+    shutting_down()
+  then
+    log_level_3("SHUTDOWN - PROCESSING SYNCHRONOUSLY: " ^
+        f)
+
+    handle_file(f)
+  else
+    handle_file_async(f)
+  end
+end
+
+# ------------------------------------------------------------
 # STREAM COPY MODE
 # ------------------------------------------------------------
 
@@ -1733,11 +1757,24 @@ then
       filename,
       s1,
       reopen_on_metadata=handle_metadata,
-      on_close=handle_file_async,
+      on_close=handle_file_dispatch,
 #      reopen_on_error=fun (_) -> 0.,
       append=true,
       fallible=true
     )
+
+  # Stop the file output cleanly on shutdown (CTRL-C, /stop_all, timeout
+  # watchdog). Setting shutting_down first makes handle_file_dispatch run
+  # handle_file synchronously (not via the async thread) so the process
+  # doesn't exit before post-processing of the final file has finished.
+  def shutdown_f1() =
+    shutting_down.set(true)
+    f1.stop()
+  end
+
+  on_shutdown(shutdown_f1)
+
+
 
   # ----------------------------------------------------------
   # PORTAUDIO
@@ -1867,11 +1904,23 @@ else
       filename,
       s2,
       reopen_on_metadata=handle_metadata,
-      on_close=handle_file_async,
+      on_close=handle_file_dispatch,
 #      reopen_on_error=fun (_) -> 0.,
       append=true,
       fallible=true
     )
+
+  # Stop the file output cleanly on shutdown (CTRL-C, /stop_all, timeout
+  # watchdog). Setting shutting_down first makes handle_file_dispatch run
+  # handle_file synchronously (not via the async thread) so the process
+  # doesn't exit before post-processing of the final file has finished.
+  def shutdown_f2() =
+    shutting_down.set(true)
+    f2.stop()
+  end
+
+  on_shutdown(shutdown_f2)
+
 
   # ----------------------------------------------------------
   # PORTAUDIO
