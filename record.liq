@@ -1,5 +1,5 @@
 #record.liq
-#Version 1.0.50 2026-09-08
+#Version 1.0.51 2026-09-08
 #Liquidsoap 2.4.5
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -station "<station>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> -timeout <0>
@@ -584,7 +584,7 @@ def download_cover(m, covername) =
 
   # TuneIn cover
   if
-	string.length(tunein_id()) > 2
+    string.length(tunein_id()) > 2
   then
     try
       tjson =
@@ -627,14 +627,11 @@ def download_cover(m, covername) =
     (m["artist"] != "") and (m["title"] != "")
   then
     try
-      dquery =
-        url.encode(
-          "artist:\"" ^ m["artist"] ^ "\" track:\"" ^ m["title"] ^ "\""
-        )
+      dquery = "artist:\"" ^ m["artist"] ^ "\" track:\"" ^ m["title"] ^ "\""
 
       djson =
         http.get(
-		normalize_url=false,					  
+          normalize_url=true,
           "https://api.deezer.com/search?limit=1&q=" ^
             dquery
         )
@@ -1246,7 +1243,7 @@ def handle_file(f) =
               p.stderr)
         end
       end
-	  
+
       # ----------------------------------------------------
       # VORBIS / OGG + COVER
       # ----------------------------------------------------
@@ -1283,9 +1280,6 @@ def handle_file(f) =
                 " -i " ^
                 process.quote(metaname) ^
                 " -map_metadata 1 -map 0:a -c:a copy " ^
-													  
-														  
-											  
                 process.quote(tmp_ext_filename)
             )
           else
@@ -1559,7 +1553,6 @@ def handle_file(f) =
         end
 
         # ----------------------------------------------------
-	    # ----------------------------------------------------
         # REMOVE COVER METADATA FILE
         # ----------------------------------------------------
 
@@ -1574,7 +1567,8 @@ def handle_file(f) =
                 "#{err.message}")
           end
         end
-														  
+
+        # ----------------------------------------------------
         # REMOVE PROCESSED TEMP
         # ----------------------------------------------------
 
