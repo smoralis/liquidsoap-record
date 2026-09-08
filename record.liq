@@ -1,5 +1,5 @@
 #record.liq
-#Version 1.0.49 2026-09-08
+#Version 1.0.50 2026-09-08
 #Liquidsoap 2.4.5
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -station "<station>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> -timeout <0>
@@ -634,6 +634,7 @@ def download_cover(m, covername) =
 
       djson =
         http.get(
+		normalize_url=false,					  
           "https://api.deezer.com/search?limit=1&q=" ^
             dquery
         )
