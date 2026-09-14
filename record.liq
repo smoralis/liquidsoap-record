@@ -1,5 +1,5 @@
 #record.liq
-#Version 1.0.51 2026-09-08
+#Version 1.0.52 2026-09-14
 #Liquidsoap 2.4.5
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -station "<station>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> -timeout <0>
@@ -197,8 +197,7 @@ folder.set(string.trim(remove_illegal(urlx())))
 
 def ffprobe_name() =
   if
-    station() !=
-      " "
+  string.length(station()) > 1
   then
     folder.set(string.trim(remove_illegal(station())))
   else
@@ -627,7 +626,16 @@ def download_cover(m, covername) =
     (m["artist"] != "") and (m["title"] != "")
   then
     try
-      dquery = "artist:\"" ^ m["artist"] ^ "\" track:\"" ^ m["title"] ^ "\""
+	
+  #Artist - title broken ?? disable for now - use free text
+	
+#   dquery = "artist:\"" ^ m["artist"] ^ "\" track:\"" ^ m["title"] ^ "\""		
+	dquery ="\"" ^ m["artist"] ^ "\" \"" ^ m["title"] ^ "\""	
+
+	log_level_3("rec#" ^ string(counter()) ^ 
+			" " ^ "https://api.deezer.com/search?limit=1&q=" ^
+            dquery
+          )
 
       djson =
         http.get(
