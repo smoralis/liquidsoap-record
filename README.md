@@ -209,3 +209,11 @@ keep the original (uncovered) recording instead of losing it.
 ## GUI Screenshot
 
 ![Alt text](/screenshot.png?raw=true "liquidsoap-record-ui")
+
+## Shell/cmd Screenshot
+
+![Alt text](/screenshot2.png?raw=true "liquidsoap-record-ui")
+
+## Web Screenshot
+
+![Alt text](/screenshot3.png?raw=true "liquidsoap-record-ui")
