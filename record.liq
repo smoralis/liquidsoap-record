@@ -1,5 +1,5 @@
 #record.liq
-#Version 1.0.52 2026-09-14
+#Version 1.0.53 2026-09-22
 #Liquidsoap 2.4.5
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -station "<station>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> -timeout <0>
@@ -15,7 +15,7 @@ codec_name = ref("")
 urlx.set(getopt(default="https://example.com","-url"))
 directory = getopt(default="/Directory","-dir")
 station = ref("")
-station.set(getopt(default="This station","-station"))
+station.set(getopt(default="","-station"))
 folder = ref("")
 transcode = getopt(default="0", "-transcode")
 samplerate = getopt(default="44100", "-samplerate")
@@ -1743,6 +1743,12 @@ then
   s1 = buffer(buffer=5.0, input.ffmpeg(self_sync=true, poll_delay=0.1, urlx()))
 
   # Metadata
+   # Metadata: ICY StreamTitle -> title, then split "Artist - Title"
+  def streamtitle_to_title(m) =
+    if m["StreamTitle"] != "" then [("title", m["StreamTitle"])] else [] end
+  end
+
+  s1 = metadata.map(streamtitle_to_title, s1)																								 
   s1 = metadata.map(lower_ARTIST, s1)
 
   s1 = metadata.map(lower_TITLE, s1)
@@ -1883,6 +1889,14 @@ else
   clock.assign_new(sync="cpu", [s2])
 
   # Metadata
+  
+  # Metadata: ICY StreamTitle -> title, then split "Artist - Title"
+  def streamtitle_to_title(m) =
+    if m["StreamTitle"] != "" then [("title", m["StreamTitle"])] else [] end
+  end
+
+  s2 = metadata.map(streamtitle_to_title, s2)
+  
   s2 = metadata.map(lower_ARTIST, s2)
 
   s2 = metadata.map(lower_TITLE, s2)
