@@ -1,5 +1,5 @@
 #record.liq
-#Version 1.0.53 2026-09-22
+#Version 1.0.54 2026-09-22
 #Liquidsoap 2.4.5
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -station "<station>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> -timeout <0>
@@ -323,6 +323,16 @@ then
   file.write(data=urlx(), m3u() ^ "/#listen.m3u")
 end
 
+
+# ------------------------------------------------------------
+# STREAMTITLE - STREAMURL
+# ------------------------------------------------------------
+  def streamtitle_to_title(m) =
+    t = if m["StreamTitle"] != "" then [("title", m["StreamTitle"])] else [] end
+    u = if m["StreamUrl"] != "" then [("url", m["StreamUrl"])] else [] end
+    list.append(t, u)
+  end
+
 # ------------------------------------------------------------
 # LOWERCASE ARTIST
 # ------------------------------------------------------------
@@ -526,7 +536,7 @@ end
 
 def add_metadata(m) =
   comment = m["comment"]
-  streamurl = m["urlx"]
+  streamurl = m["url"]
 
   [
     (
@@ -547,17 +557,17 @@ def download_cover(m, covername) =
 
   # Metadata cover URL
   if
-    (m["urlx"] != "") and string.contains(substring="?", m["urlx"])
+    (m["url"] != "") and string.contains(substring="?", m["url"])
   then
-    let (q, t) = string.split.first(separator="?", m["urlx"])
+    let (q, t) = string.split.first(separator="?", m["url"])
 
     log_level_3("rec#" ^ string(counter()) ^
-        " Stripped from %urlx%: [" ^
+        " Stripped from %url%: [" ^
         t)
 
     cover.set(q)
   else
-    cover.set(m["urlx"])
+    cover.set(m["url"])
   end
 
   # Download metadata cover
@@ -623,7 +633,7 @@ def download_cover(m, covername) =
 
   # Deezer cover (fallback when no TuneIn ID is configured)
   elsif
-    (m["artist"] != "") and (m["title"] != "")
+    (m["artist"] != "") and (m["title"] != "") and (cover() == "")
   then
     try
 	
@@ -1742,13 +1752,14 @@ then
   # Source
   s1 = buffer(buffer=5.0, input.ffmpeg(self_sync=true, poll_delay=0.1, urlx()))
 
-  # Metadata
-   # Metadata: ICY StreamTitle -> title, then split "Artist - Title"
-  def streamtitle_to_title(m) =
-    if m["StreamTitle"] != "" then [("title", m["StreamTitle"])] else [] end
-  end
+  # Metadata  
+																	
+							   
+																			
+	 
 
   s1 = metadata.map(streamtitle_to_title, s1)																								 
+
   s1 = metadata.map(lower_ARTIST, s1)
 
   s1 = metadata.map(lower_TITLE, s1)
@@ -1890,10 +1901,10 @@ else
 
   # Metadata
   
-  # Metadata: ICY StreamTitle -> title, then split "Artist - Title"
-  def streamtitle_to_title(m) =
-    if m["StreamTitle"] != "" then [("title", m["StreamTitle"])] else [] end
-  end
+																   
+							   
+																			
+	 
 
   s2 = metadata.map(streamtitle_to_title, s2)
   
