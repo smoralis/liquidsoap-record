@@ -38,7 +38,7 @@ The project has three parts:
 
 ## `record.liq`
 
-Liquidsoap script (targets Liquidsoap 2.4.5) invoked as:
+Liquidsoap script (targets Liquidsoap 2.4.5 / 2.5.0) invoked as:
 
 ```
 liquidsoap record.liq -- \
@@ -200,7 +200,7 @@ keep the original (uncovered) recording instead of losing it.
 
 ## Requirements
 
-- [Liquidsoap](https://www.liquidsoap.info/) 2.4.5 (built with
+- [Liquidsoap](https://www.liquidsoap.info/) 2.4.5 / 2.5.0 (built with
   `output.portaudio`/`output.alsa` support if you want live listening)
 - `ffmpeg` / `ffprobe`
 - Python 3 (for the GUI and `build_cover_metadata.py`); Tkinter for the GUI
