@@ -1,5 +1,5 @@
 #record.liq
-#Version 1.0.54 2026-09-22
+#Version 1.0.55 2026-09-27
 #Liquidsoap 2.4.5
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -station "<station>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> -timeout <0>
@@ -9,13 +9,14 @@
 # ------------------------------------------------------------
 
 urlx = ref("")
+urls = ref("")
 ext = ref("")
 cformat = ref("")
 codec_name = ref("")
-urlx.set(getopt(default="https://example.com","-url"))
-directory = getopt(default="/Directory","-dir")
+urlx.set(getopt(default="https://example.com", "-url"))
+directory = getopt(default="/Directory", "-dir")
 station = ref("")
-station.set(getopt(default="","-station"))
+station.set(getopt(default="", "-station"))
 folder = ref("")
 transcode = getopt(default="0", "-transcode")
 samplerate = getopt(default="44100", "-samplerate")
@@ -36,7 +37,7 @@ counter = ref(-1)
 nowrecording = ref("")
 cover = ref("")
 tunein_id = ref("")
-tunein_id.set(getopt(default=" ","-id"))
+tunein_id.set(getopt(default="0","-id"))
 relay = getopt(default="0", "-relay")
 hostx = getopt(default="localhost", "-host")
 port = getopt(default="8000", "-port")
@@ -64,38 +65,6 @@ end
 def log_level_4(msg) =
   log(label="liquidsoap-record", level=4, msg)
 end
-
-
-# ------------------------------------------------------------
-#2.5.0 experimental Icecast server
-# ------------------------------------------------------------
-
-#DISABLED for 2.4.5
-#<
-
-if
-  relay == "1" 
-then
-  icecast_server = icecast.server(port=8001, password="hackme")
-
-  # React when a source connects
-  icecast_server.on_connect(
-    fun (r) ->
-      log.important(
-        "Source connected on mount #{r.mount}"
-      )
-  )
-
-  # React when a source disconnects
-  icecast_server.on_disconnect(
-    fun (r) ->
-      log.important(
-        "Source disconnected from mount #{r.mount}"
-      )
-  )
-end
-
->#
 
 
 # ------------------------------------------------------------
@@ -127,6 +96,11 @@ settings.encoder.metadata.export :=
   ]
 
 # ------------------------------------------------------------
+# HARBOR
+# ------------------------------------------------------------
+settings.harbor.bind_addrs := ["127.0.0.1"]
+
+# ------------------------------------------------------------
 # LOGGING
 # ------------------------------------------------------------
 settings.log.level.set(int_of_string(logoutput))
@@ -135,6 +109,7 @@ settings.ffmpeg.log.verbosity := "error"
 # ------------------------------------------------------------
 # SCHEDULER
 # ------------------------------------------------------------
+
 settings.scheduler.generic_queues.set(1)
 settings.scheduler.fast_queues.set(0)
 settings.scheduler.non_blocking_queues.set(1)
@@ -163,23 +138,27 @@ def remove_illegal(value) =
   str = r/[\*<>]/g.replace(fun (_) -> "x", str)
   str = r/[\:\/|\\]/g.replace(fun (_) -> "-", str)
   str = r/[\"]/g.replace(fun (_) -> "''", str)
-  str = r/[\.]/g.replace(fun (_) -> "", str)
   str
 end
 
 # ------------------------------------------------------------
-# STRIP URL AFTER &
+# STRIP URL AFTER ? FOR FOLDERNAME
 # ------------------------------------------------------------
 
 def split_url() =
   if
-    string.contains(substring="&", urlx())
+    string.contains(substring="?", urlx())
   then
-    let (u, r) = string.split.first(separator="&", urlx())
-    urlx.set(u)
-
-    log_level_2("Stripped %urlx% after & of: " ^
-        r)
+    let (u, r) = string.split.first(separator="?", urlx())
+    urls.set(u)
+    log_level_2(
+      "Stripped " ^
+        urlx() ^
+        " after ? of: " ^
+        r
+    )
+  else
+    urls.set(urlx())
   end
 end
 
@@ -189,7 +168,7 @@ split_url()
 # INITIAL FOLDER
 # ------------------------------------------------------------
 
-folder.set(string.trim(remove_illegal(urlx())))
+folder.set(string.trim(remove_illegal(urls())))
 
 # ------------------------------------------------------------
 # FFPROBE ICY-NAME
@@ -197,28 +176,42 @@ folder.set(string.trim(remove_illegal(urlx())))
 
 def ffprobe_name() =
   if
-  string.length(station()) > 1
+    string.length(station()) > 1
   then
     folder.set(string.trim(remove_illegal(station())))
   else
-    icy_name =
-      process.read(
-        "ffprobe -v quiet -print_format json " ^
-          "-select_streams a:0 " ^
-          "-show_entries format=format_tags:format_tags=icy-name " ^
-          "-of default=noprint_wrappers=1:nokey=1 " ^
-          process.quote(urlx())
+    try
+      icy_name =
+        process.read(
+          "ffprobe -v error -print_format json " ^
+            "-select_streams a:0 " ^
+            "-show_entries format=format_tags:format_tags=icy-name " ^
+            "-of default=noprint_wrappers=1:nokey=1 " ^
+            process.quote(urlx())
+        )
+
+      icy_name = r/(\r\n|\n|\r)/g.replace(fun (_) -> "", icy_name)
+
+      log_level_2(
+        "FFPROBE icy-name: #{icy_name}"
       )
 
-    icy_name = r/(\r\n|\n|\r)/g.replace(fun (_) -> "", icy_name)
-
-    log_level_2("FFPROBE icy-name: #{icy_name}")
-
-    if icy_name != "" then folder.set(string.trim(remove_illegal(icy_name))) end
+      if
+        icy_name != ""
+      then
+        folder.set(string.trim(remove_illegal(icy_name)))
+      end
+    catch err do
+      log_level_2(
+        "ffprobe failed with error: #{err.message}"
+      )
+    end
   end
 
-  log_level_2("Saving to folder: " ^
-      folder())
+  log_level_2(
+    "Saving to folder: " ^
+      folder()
+  )
 end
 
 ffprobe_name()
@@ -231,20 +224,22 @@ def ffprobe_url() =
   try
     j =
       process.read(
-        "ffprobe -v quiet " ^
+        "ffprobe -v error " ^
           "-print_format json " ^
           "-select_streams a:0 " ^
           "-show_entries stream=codec_name " ^
           "-of json=compact=1 " ^
-          urlx()
+          process.quote(urlx())
       )
 
     let json.parse ({streams = [c1]} : {streams: [{codec_name: string}]}) = j
 
     codec_name.set(string(c1.codec_name))
 
-    log_level_2("FFPROBE codec_name: " ^
-        codec_name())
+    log_level_2(
+      "FFPROBE codec_name: " ^
+        codec_name()
+    )
 
     if
       codec_name() == "mp3"
@@ -280,10 +275,36 @@ def ffprobe_url() =
       cformat.set("ogg")
       ext.set("ogg")
     end
-  catch err do
-    log_level_2("ffprobe failed to get codec_name!!! with error: #{err.message}")
+	
+	#unsupported shutdown
+	if
+      (codec_name() != "mp3")
+    and
+      (codec_name() != "aac")
+    and
+      (codec_name() != "flac")
+    and
+      (codec_name() != "opus")
+    and
+      (codec_name() != "vorbis")
+    then
+      log_level_1(
+        "FFPROBE codec_name unknown/unsupported: \"" ^
+          codec_name() ^
+          "\" - stopping"
+      )
 
-    log_level_2("Is the stream online ??")
+      shutdown()
+    end
+	
+  catch err do
+    log_level_2(
+      "ffprobe failed to get codec_name!!! with error: #{err.message}"
+    )
+
+    log_level_2(
+      "Is the stream online ??"
+    )
   end
 end
 
@@ -323,15 +344,14 @@ then
   file.write(data=urlx(), m3u() ^ "/#listen.m3u")
 end
 
-
 # ------------------------------------------------------------
 # STREAMTITLE - STREAMURL
 # ------------------------------------------------------------
-  def streamtitle_to_title(m) =
-    t = if m["StreamTitle"] != "" then [("title", m["StreamTitle"])] else [] end
-    u = if m["StreamUrl"] != "" then [("url", m["StreamUrl"])] else [] end
-    list.append(t, u)
-  end
+def streamtitle_to_title(m) =
+  t = if m["StreamTitle"] != "" then [("title", m["StreamTitle"])] else [] end
+  u = if m["StreamUrl"] != "" then [("url", m["StreamUrl"])] else [] end
+  list.append(t, u)
+end
 
 # ------------------------------------------------------------
 # LOWERCASE ARTIST
@@ -389,16 +409,22 @@ def split_title(m) =
       artist.set(string.trim(a))
       title.set(string.trim(t))
 
-      log_level_3("rec#" ^ string(counter()) ^
-          " Splitted %title% to %artist%,%title%")
+      log_level_3(
+        "rec#" ^ string(counter()) ^
+          " Splitted %title% to %artist%,%title%"
+      )
 
-      log_level_3("rec#" ^ string(counter()) ^
+      log_level_3(
+        "rec#" ^ string(counter()) ^
           " Artist: " ^
-          artist())
+          artist()
+      )
 
-      log_level_3("rec#" ^ string(counter()) ^
+      log_level_3(
+        "rec#" ^ string(counter()) ^
           " Title : " ^
-          title())
+          title()
+      )
     end
 
     # Artist ? Title
@@ -419,15 +445,21 @@ def split_title(m) =
       artist.set(string.trim(a))
       title.set(string.trim(t))
 
-      log_level_3("rec#" ^ string(counter()) ^
-          " Splitted %title% to %artist%,%title%")
+      log_level_3(
+        "rec#" ^ string(counter()) ^
+          " Splitted %title% to %artist%,%title%"
+      )
 
-      log_level_3("rec#" ^ string(counter()) ^
+      log_level_3(
+        "rec#" ^ string(counter()) ^
           " Artist: " ^
-          artist())
+          artist()
+      )
 
-      log_level_3(" Title : " ^
-          title())
+      log_level_3(
+        " Title : " ^
+          title()
+      )
     end
 
     # Strip after |
@@ -447,13 +479,17 @@ def split_title(m) =
 
       title.set(string.trim(l))
 
-      log_level_3("rec#" ^ string(counter()) ^
+      log_level_3(
+        "rec#" ^ string(counter()) ^
           " Stripped from %title%: | " ^
-          r)
+          r
+      )
 
-      log_level_3("rec#" ^ string(counter()) ^
+      log_level_3(
+        "rec#" ^ string(counter()) ^
           " Title : " ^
-          title())
+          title()
+      )
     end
 
     # Strip after [
@@ -473,13 +509,17 @@ def split_title(m) =
 
       title.set(string.trim(l))
 
-      log_level_3("rec#" ^ string(counter()) ^
+      log_level_3(
+        "rec#" ^ string(counter()) ^
           " Stripped from %title%: [" ^
-          r)
+          r
+      )
 
-      log_level_3("rec#" ^ string(counter()) ^
+      log_level_3(
+        "rec#" ^ string(counter()) ^
           " Title : " ^
-          title())
+          title()
+      )
     end
 
     # Strip after -
@@ -499,13 +539,17 @@ def split_title(m) =
 
       title.set(string.trim(l))
 
-      log_level_3("rec#" ^ string(counter()) ^
+      log_level_3(
+        "rec#" ^ string(counter()) ^
           " Stripped from %title%: - " ^
-          r)
+          r
+      )
 
-      log_level_3("rec#" ^ string(counter()) ^
+      log_level_3(
+        "rec#" ^ string(counter()) ^
           " Title : " ^
-          title())
+          title()
+      )
     end
   end
 end
@@ -549,11 +593,40 @@ def add_metadata(m) =
 end
 
 # ------------------------------------------------------------
+# HTTP COVER DOWNLOAD
+# ------------------------------------------------------------
+
+def http_download_cover(urlc, covername) =
+  try
+    log_level_3(
+      "rec#" ^ string(counter()) ^
+        " Downloading cover: " ^
+        urlc
+    )
+
+    file.download(
+      filename=covername,
+      timeout=30.,
+      urlc
+    )
+  catch err do
+    log_level_3(
+      "rec#" ^ string(counter()) ^
+        " Failed to download cover (http): #{err.message}"
+    )
+    false
+  end
+end
+
+
+# ------------------------------------------------------------
 # DOWNLOAD COVER
 # ------------------------------------------------------------
 
-def download_cover(m, covername) =
+def download_cover(m, covername, count_id) =
   cover.set("")
+
+  let found = ref(false)
 
   # Metadata cover URL
   if
@@ -561,9 +634,11 @@ def download_cover(m, covername) =
   then
     let (q, t) = string.split.first(separator="?", m["url"])
 
-    log_level_3("rec#" ^ string(counter()) ^
+    log_level_3(
+      "rec#" ^ string(count_id) ^
         " Stripped from %url%: [" ^
-        t)
+        t
+    )
 
     cover.set(q)
   else
@@ -576,24 +651,39 @@ def download_cover(m, covername) =
   and
 
       (
-        string.contains(suffix="jpg", cover())
+        string.contains(suffix=".jpg", string.lowercase(cover()))
       or
-        string.contains(suffix="png", cover())
+        string.contains(suffix=".jpeg", string.lowercase(cover()))
+      or
+        string.contains(suffix=".png", string.lowercase(cover()))
       )
 
   then
-    cov = file.download(filename=covername, cover())
+    cov = http_download_cover(cover(), covername)
 
-    log_level_3("rec#" ^ string(counter()) ^
-        " FOUND COVER (url): " ^
-        string(cov) ^
-        " : " ^
-        cover())
+    if
+      cov
+    then
+      found.set(true)
+
+      log_level_3(
+        "rec#" ^ string(counter()) ^
+          " FOUND COVER (url): " ^
+          cover()
+      )
+    else
+      log_level_3(
+        "rec#" ^ string(counter()) ^
+          " NO USABLE COVER (url): " ^
+          cover()
+      )
+    end
   end
 
   # TuneIn cover
+
   if
-    string.length(tunein_id()) > 2
+    not found() and (string.length(tunein_id()) > 2)
   then
     try
       tjson =
@@ -607,80 +697,101 @@ def download_cover(m, covername) =
 
       cover.set(string(Secondary.Image))
 
-      cov2 = file.download(filename=covername, cover())
-
-      log_level_3("rec#" ^ string(counter()) ^
-          " FOUND COVER (tunein): " ^
-          string(cov2) ^
-          " : " ^
-          cover())
+      cov2 = http_download_cover(cover(), covername)
 
       if
-        relay == "1"
+        cov2
       then
-        icy.update_metadata(
-          host=hostx,
-          port=int_of_string(port),
-          user="source",
-          password=password,
-          mount="stream",
-          [("artist", artist()), ("title", title()), ("url", cover())]
+        found.set(true)
+
+        log_level_3(
+          "rec#" ^ string(counter()) ^
+            " FOUND COVER (url): " ^
+            cover()
+        )
+      else
+        log_level_3(
+          "rec#" ^ string(counter()) ^
+            " NO USABLE COVER (url): " ^
+            cover()
         )
       end
     catch err do
-      log_level_3("Failed to get image (tunein) - with error: #{err.message}")
+      log_level_3(
+        "Failed to get image (tunein) - with error: #{err.message}"
+      )
     end
-
-  # Deezer cover (fallback when no TuneIn ID is configured)
   elsif
-    (m["artist"] != "") and (m["title"] != "") and (cover() == "")
+    # Deezer cover 
+
+    not found() and (m["artist"] != "") and (m["title"] != "")
   then
     try
-	
-  #Artist - title broken ?? disable for now - use free text
-	
-#   dquery = "artist:\"" ^ m["artist"] ^ "\" track:\"" ^ m["title"] ^ "\""		
-	dquery ="\"" ^ m["artist"] ^ "\" \"" ^ m["title"] ^ "\""	
+      #Artist - title broken ?? disable for now - use free text
 
-	log_level_3("rec#" ^ string(counter()) ^ 
-			" " ^ "https://api.deezer.com/search?limit=1&q=" ^
-            dquery
-          )
+      #   dquery = "artist:\"" ^ m["artist"] ^ "\" track:\"" ^ m["title"] ^ "\""
+      dquery =
+        "\"" ^ m["artist"] ^
+          "\" \"" ^
+          m["title"] ^
+          "\""
+
+      log_level_3(
+        "rec#" ^ string(counter()) ^
+          " " ^
+          "https://api.deezer.com/search?limit=1&q=" ^
+          dquery
+      )
 
       djson =
         http.get(
           normalize_url=true,
-          "https://api.deezer.com/search?limit=1&q=" ^
-            dquery
+          "https://api.deezer.com/search?limit=1&q=" ^ dquery
         )
 
-      let json.parse ({data = [d1]} : {data: [{album: {cover_xl: string}}]}) = djson
+      let json.parse ({data = [d1]} : {data: [{album: {cover_xl: string}}]}) =
+        djson
 
       cover.set(d1.album.cover_xl)
 
-      cov3 = file.download(filename=covername, cover())
-
-      log_level_3("rec#" ^ string(counter()) ^
-          " FOUND COVER (deezer): " ^
-          string(cov3) ^
-          " : " ^
-          cover())
+      cov3 = http_download_cover(cover(), covername)
 
       if
-        relay == "1"
+        cov3
       then
-        icy.update_metadata(
-          host=hostx,
-          port=int_of_string(port),
-          user="source",
-          password=password,
-          mount="stream",
-          [("artist", artist()), ("title", title()), ("url", cover())]
+        found.set(true)
+
+        log_level_3(
+          "rec#" ^ string(counter()) ^
+            " FOUND COVER (url): " ^
+            cover()
+        )
+      else
+        log_level_3(
+          "rec#" ^ string(counter()) ^
+            " NO USABLE COVER (url): " ^
+            cover()
         )
       end
     catch err do
-      log_level_3("Failed to get image (deezer) - with error: #{err.message}")
+      log_level_3(
+        "Failed to get image (deezer) - with error: #{err.message}"
+      )
     end
+  end
+
+  #update iceacast relay
+  if
+    (relay == "1") and (cover() != "")
+  then
+    icy.update_metadata(
+      host=hostx,
+      port=int_of_string(port),
+      user="source",
+      password=password,
+      mount="stream",
+      [("artist", artist()), ("title", title()), ("url", cover())]
+    )
   end
 end
 
@@ -690,9 +801,8 @@ end
 
 filename =
   ref(
-    time.string(
-      "#{directory}/" ^ folder() ^ "/%Y-%m-%d_%H-%M-%S." ^ ext() ^ ".rec#s"
-    )
+    "#{directory}/" ^ folder() ^ time.string("/%Y-%m-%d_%H-%M-%S.") ^ ext() ^
+      ".rec#s"
   )
 
 nowrecording.set(time.string("%Y-%m-%d_%H-%M-%S." ^ ext() ^ ".rec#s"))
@@ -705,9 +815,11 @@ def handle_metadata(m) =
   if
     singlex != "1"
   then
-    log_level_3("rec#" ^ string(counter()) ^
+    log_level_3(
+      "rec#" ^ string(counter()) ^
         " NEW METADATA " ^
-        string(m))
+        string(m)
+    )
 
     # Artist + Title
     if
@@ -717,8 +829,10 @@ def handle_metadata(m) =
     and
       ((m["artist"] != tmp_artist()) or (m["title"] != tmp_title()))
     then
-      log_level_3("rec#" ^ string(counter()) ^
-          " RE-OPEN ARTIST - TITLE")
+      log_level_3(
+        "rec#" ^ string(counter()) ^
+          " RE-OPEN ARTIST - TITLE"
+      )
 
       ref.incr(counter)
 
@@ -747,23 +861,27 @@ def handle_metadata(m) =
         covers == "1"
       then
         thread.run(
-          delay=5.,
           {
             download_cover(
               m,
               "#{directory}/" ^ folder() ^ "/rec#" ^ string(counter()) ^
-                ".cover"
+                ".cover",
+              string(counter())
             )
           }
         )
       end
 
-      log_level_2("rec#" ^ string(counter()) ^
+      log_level_2(
+        "rec#" ^ string(counter()) ^
           " New Track Detected. Recording.. " ^
           "#{f_artist} - #{f_title}." ^
-          ext())
+          ext()
+      )
 
-      log_level_2("-- press CTRL-C to stop/exit --")
+      log_level_2(
+        "-- press CTRL-C to stop/exit --"
+      )
 
       true
     elsif
@@ -771,8 +889,10 @@ def handle_metadata(m) =
 
       (m["artist"] == "") and (m["title"] != "") and (m["title"] != tmp_title())
     then
-      log_level_3("rec#" ^ string(counter()) ^
-          " RE-OPEN TITLE")
+      log_level_3(
+        "rec#" ^ string(counter()) ^
+          " RE-OPEN TITLE"
+      )
 
       ref.incr(counter)
 
@@ -787,17 +907,23 @@ def handle_metadata(m) =
 
       nowrecording.set("#{f_title}." ^ ext() ^ ".rec#" ^ string(counter()))
 
-      log_level_2("rec#" ^ string(counter()) ^
+      log_level_2(
+        "rec#" ^ string(counter()) ^
           " New Track Detected. Recording.. " ^
           "#{f_title}." ^
-          ext())
+          ext()
+      )
 
-      log_level_2("-- press CTRL-C to stop/exit --")
+      log_level_2(
+        "-- press CTRL-C to stop/exit --"
+      )
 
       true
     else
-      log_level_3("rec#" ^ string(counter()) ^
-          " FALSE - NOT RE-OPENING")
+      log_level_3(
+        "rec#" ^ string(counter()) ^
+          " FALSE - NOT RE-OPENING"
+      )
 
       false
     end
@@ -828,6 +954,34 @@ def handle_file(f) =
   let final_copy_ok = ref(false)
 
   # --------------------------------------------------------
+  # SKIP EMPTY SOURCE FILES
+  # --------------------------------------------------------
+
+  if
+    file.size(f) == 0
+  then
+    log_level_1(
+      tno ^
+        " Source file is empty (0 bytes) - deleting and skipping: " ^
+        f
+    )
+
+    if
+      file.exists(f)
+    then
+      try
+        file.remove(f)
+      catch err do
+        log_level_1(
+          tno ^
+            " WARNING: could not remove empty source file: " ^
+            "#{err.message}"
+        )
+      end
+    end
+  else
+
+  # --------------------------------------------------------
   # COPY SOURCE TO TEMP
   # --------------------------------------------------------
 
@@ -836,15 +990,19 @@ def handle_file(f) =
 
     copy_ok.set(true)
 
-    log_level_3(tno ^
+    log_level_3(
+      tno ^
         " Source copied to temporary file: " ^
-        tmp_filename)
+        tmp_filename
+    )
   catch err do
     copy_ok.set(false)
 
-    log_level_1(tno ^
+    log_level_1(
+      tno ^
         " ERROR copying source to temporary file: " ^
-        "#{err.message}")
+        "#{err.message}"
+    )
   end
 
   # --------------------------------------------------------
@@ -862,13 +1020,15 @@ def handle_file(f) =
       if
         (ext() == "flac") and (file.exists(c))
       then
-        log_level_3(tno ^
+        log_level_3(
+          tno ^
             " FFMPEG-reprocess (FLAC) with COVER " ^
-            f)
+            f
+        )
 
         let p =
           process.run(
-            "ffmpeg -y -v quiet " ^
+            "ffmpeg -y -v error " ^
               "-i " ^
               process.quote(tmp_filename) ^
               " -i " ^
@@ -889,19 +1049,23 @@ def handle_file(f) =
         then
           process_ok.set(true)
 
-          log_level_3(tno ^
+          log_level_3(
+            tno ^
               " FFmpeg FLAC + COVER SUCCESS - exit code: " ^
-              string(p.status.code))
+              string(p.status.code)
+          )
         else
           process_ok.set(false)
 
-          log_level_1(tno ^
+          log_level_1(
+            tno ^
               " FFmpeg FLAC + COVER FAILED - status: " ^
               string(p.status) ^
               " code: " ^
               string(p.status.code) ^
               " stderr: " ^
-              p.stderr)
+              p.stderr
+          )
         end
       end
 
@@ -912,13 +1076,15 @@ def handle_file(f) =
       if
         (ext() == "flac") and not file.exists(c)
       then
-        log_level_3(tno ^
+        log_level_3(
+          tno ^
             " FFMPEG-reprocess (FLAC) " ^
-            f)
+            f
+        )
 
         let p =
           process.run(
-            "ffmpeg -y -v quiet " ^
+            "ffmpeg -y -v error " ^
               "-i " ^
               process.quote(tmp_filename) ^
               " " ^
@@ -934,19 +1100,23 @@ def handle_file(f) =
         then
           process_ok.set(true)
 
-          log_level_3(tno ^
+          log_level_3(
+            tno ^
               " FFmpeg FLAC SUCCESS - exit code: " ^
-              string(p.status.code))
+              string(p.status.code)
+          )
         else
           process_ok.set(false)
 
-          log_level_1(tno ^
+          log_level_1(
+            tno ^
               " FFmpeg FLAC FAILED - status: " ^
               string(p.status) ^
               " code: " ^
               string(p.status.code) ^
               " stderr: " ^
-              p.stderr)
+              p.stderr
+          )
         end
       end
 
@@ -957,13 +1127,15 @@ def handle_file(f) =
       if
         (ext() == "m4a") and (file.exists(c))
       then
-        log_level_3(tno ^
+        log_level_3(
+          tno ^
             " FFMPEG-reprocess (AAC) with COVER " ^
-            f)
+            f
+        )
 
         let p =
           process.run(
-            "ffmpeg -y -v quiet " ^
+            "ffmpeg -y -v error " ^
               "-i " ^
               process.quote(tmp_filename) ^
               " -i " ^
@@ -984,19 +1156,23 @@ def handle_file(f) =
         then
           process_ok.set(true)
 
-          log_level_3(tno ^
+          log_level_3(
+            tno ^
               " FFmpeg M4A + COVER SUCCESS - exit code: " ^
-              string(p.status.code))
+              string(p.status.code)
+          )
         else
           process_ok.set(false)
 
-          log_level_1(tno ^
+          log_level_1(
+            tno ^
               " FFmpeg M4A + COVER FAILED - status: " ^
               string(p.status) ^
               " code: " ^
               string(p.status.code) ^
               " stderr: " ^
-              p.stderr)
+              p.stderr
+          )
         end
       end
 
@@ -1007,13 +1183,15 @@ def handle_file(f) =
       if
         (ext() == "m4a") and not file.exists(c)
       then
-        log_level_3(tno ^
+        log_level_3(
+          tno ^
             " FFMPEG-reprocess (AAC) " ^
-            f)
+            f
+        )
 
         let p =
           process.run(
-            "ffmpeg -y -v quiet " ^
+            "ffmpeg -y -v error " ^
               "-i " ^
               process.quote(tmp_filename) ^
               " -c:a copy " ^
@@ -1029,19 +1207,23 @@ def handle_file(f) =
         then
           process_ok.set(true)
 
-          log_level_3(tno ^
+          log_level_3(
+            tno ^
               " FFmpeg M4A SUCCESS - exit code: " ^
-              string(p.status.code))
+              string(p.status.code)
+          )
         else
           process_ok.set(false)
 
-          log_level_1(tno ^
+          log_level_1(
+            tno ^
               " FFmpeg M4A FAILED - status: " ^
               string(p.status) ^
               " code: " ^
               string(p.status.code) ^
               " stderr: " ^
-              p.stderr)
+              p.stderr
+          )
         end
       end
 
@@ -1052,13 +1234,15 @@ def handle_file(f) =
       if
         (ext() == "mp3") and (file.exists(c))
       then
-        log_level_3(tno ^
+        log_level_3(
+          tno ^
             " FFMPEG-reprocess (MP3) with COVER " ^
-            f)
+            f
+        )
 
         let p =
           process.run(
-            "ffmpeg -y -v quiet " ^
+            "ffmpeg -y -v error " ^
               "-i " ^
               process.quote(tmp_filename) ^
               " -i " ^
@@ -1080,19 +1264,23 @@ def handle_file(f) =
         then
           process_ok.set(true)
 
-          log_level_3(tno ^
+          log_level_3(
+            tno ^
               " FFmpeg MP3 + COVER SUCCESS - exit code: " ^
-              string(p.status.code))
+              string(p.status.code)
+          )
         else
           process_ok.set(false)
 
-          log_level_1(tno ^
+          log_level_1(
+            tno ^
               " FFmpeg MP3 + COVER FAILED - status: " ^
               string(p.status) ^
               " code: " ^
               string(p.status.code) ^
               " stderr: " ^
-              p.stderr)
+              p.stderr
+          )
         end
       end
 
@@ -1103,13 +1291,15 @@ def handle_file(f) =
       if
         (ext() == "mp3") and not file.exists(c)
       then
-        log_level_3(tno ^
+        log_level_3(
+          tno ^
             " FFMPEG-reprocess (MP3) " ^
-            f)
+            f
+        )
 
         let p =
           process.run(
-            "ffmpeg -y -v quiet " ^
+            "ffmpeg -y -v error " ^
               "-i " ^
               process.quote(tmp_filename) ^
               " -c:a copy " ^
@@ -1125,19 +1315,23 @@ def handle_file(f) =
         then
           process_ok.set(true)
 
-          log_level_3(tno ^
+          log_level_3(
+            tno ^
               " FFmpeg MP3 SUCCESS - exit code: " ^
-              string(p.status.code))
+              string(p.status.code)
+          )
         else
           process_ok.set(false)
 
-          log_level_1(tno ^
+          log_level_1(
+            tno ^
               " FFmpeg MP3 FAILED - status: " ^
               string(p.status) ^
               " code: " ^
               string(p.status.code) ^
               " stderr: " ^
-              p.stderr)
+              p.stderr
+          )
         end
       end
 
@@ -1148,9 +1342,11 @@ def handle_file(f) =
       if
         (ext() == "opus") and (file.exists(c))
       then
-        log_level_1(tno ^
+        log_level_3(
+          tno ^
             " FFMPEG-reprocess (OPUS) with COVER " ^
-            f)
+            f
+        )
 
         let pm =
           process.run(
@@ -1171,7 +1367,7 @@ def handle_file(f) =
             file.exists(metaname)
           then
             process.run(
-              "ffmpeg -y -v quiet " ^
+              "ffmpeg -y -v error " ^
                 "-i " ^
                 process.quote(tmp_filename) ^
                 " -i " ^
@@ -1180,12 +1376,14 @@ def handle_file(f) =
                 process.quote(tmp_ext_filename)
             )
           else
-            log_level_3(tno ^
+            log_level_3(
+              tno ^
                 " Failed to build METADATA_BLOCK_PICTURE - stderr: " ^
-                pm.stderr)
+                pm.stderr
+            )
 
             process.run(
-              "ffmpeg -y -v quiet " ^
+              "ffmpeg -y -v error " ^
                 "-i " ^
                 process.quote(tmp_filename) ^
                 " -c:a copy " ^
@@ -1202,19 +1400,23 @@ def handle_file(f) =
         then
           process_ok.set(true)
 
-          log_level_1(tno ^
+          log_level_3(
+            tno ^
               " FFmpeg OPUS + COVER SUCCESS - exit code: " ^
-              string(p.status.code))
+              string(p.status.code)
+          )
         else
           process_ok.set(false)
 
-          log_level_3(tno ^
+          log_level_1(
+            tno ^
               " FFmpeg OPUS + COVER FAILED - status: " ^
               string(p.status) ^
               " code: " ^
               string(p.status.code) ^
               " stderr: " ^
-              p.stderr)
+              p.stderr
+          )
         end
       end
       # ----------------------------------------------------
@@ -1224,13 +1426,15 @@ def handle_file(f) =
       if
         (ext() == "opus") and not file.exists(c)
       then
-        log_level_3(tno ^
+        log_level_3(
+          tno ^
             " FFMPEG-reprocess (OPUS) " ^
-            f)
+            f
+        )
 
         let p =
           process.run(
-            "ffmpeg -y -v quiet " ^
+            "ffmpeg -y -v error " ^
               "-i " ^
               process.quote(tmp_filename) ^
               " -c:a copy " ^
@@ -1246,19 +1450,23 @@ def handle_file(f) =
         then
           process_ok.set(true)
 
-          log_level_3(tno ^
+          log_level_3(
+            tno ^
               " FFmpeg OPUS SUCCESS - exit code: " ^
-              string(p.status.code))
+              string(p.status.code)
+          )
         else
           process_ok.set(false)
 
-          log_level_1(tno ^
+          log_level_1(
+            tno ^
               " FFmpeg OPUS FAILED - status: " ^
               string(p.status) ^
               " code: " ^
               string(p.status.code) ^
               " stderr: " ^
-              p.stderr)
+              p.stderr
+          )
         end
       end
 
@@ -1269,9 +1477,11 @@ def handle_file(f) =
       if
         (ext() == "ogg") and (file.exists(c))
       then
-        log_level_1(tno ^
+        log_level_3(
+          tno ^
             " FFMPEG-reprocess (VORBIS) with COVER " ^
-            f)
+            f
+        )
 
         let pm =
           process.run(
@@ -1292,7 +1502,7 @@ def handle_file(f) =
             file.exists(metaname)
           then
             process.run(
-              "ffmpeg -y -v quiet " ^
+              "ffmpeg -y -v error " ^
                 "-i " ^
                 process.quote(tmp_filename) ^
                 " -i " ^
@@ -1301,12 +1511,14 @@ def handle_file(f) =
                 process.quote(tmp_ext_filename)
             )
           else
-            log_level_3(tno ^
+            log_level_3(
+              tno ^
                 " Failed to build METADATA_BLOCK_PICTURE - stderr: " ^
-                pm.stderr)
+                pm.stderr
+            )
 
             process.run(
-              "ffmpeg -y -v quiet " ^
+              "ffmpeg -y -v error " ^
                 "-i " ^
                 process.quote(tmp_filename) ^
                 " -c:a copy " ^
@@ -1323,19 +1535,23 @@ def handle_file(f) =
         then
           process_ok.set(true)
 
-          log_level_1(tno ^
+          log_level_3(
+            tno ^
               " FFmpeg OGG + COVER SUCCESS - exit code: " ^
-              string(p.status.code))
+              string(p.status.code)
+          )
         else
           process_ok.set(false)
 
-          log_level_3(tno ^
+          log_level_1(
+            tno ^
               " FFmpeg OGG + COVER FAILED - status: " ^
               string(p.status) ^
               " code: " ^
               string(p.status.code) ^
               " stderr: " ^
-              p.stderr)
+              p.stderr
+          )
         end
       end
 
@@ -1346,13 +1562,15 @@ def handle_file(f) =
       if
         (ext() == "ogg") and not file.exists(c)
       then
-        log_level_3(tno ^
+        log_level_3(
+          tno ^
             " FFMPEG-reprocess (VORBIS) " ^
-            f)
+            f
+        )
 
         let p =
           process.run(
-            "ffmpeg -y -v quiet " ^
+            "ffmpeg -y -v error " ^
               "-i " ^
               process.quote(tmp_filename) ^
               " -c:a copy " ^
@@ -1368,27 +1586,33 @@ def handle_file(f) =
         then
           process_ok.set(true)
 
-          log_level_3(tno ^
+          log_level_3(
+            tno ^
               " FFmpeg OGG SUCCESS - exit code: " ^
-              string(p.status.code))
+              string(p.status.code)
+          )
         else
           process_ok.set(false)
 
-          log_level_1(tno ^
+          log_level_1(
+            tno ^
               " FFmpeg OGG FAILED - status: " ^
               string(p.status) ^
               " code: " ^
               string(p.status.code) ^
               " stderr: " ^
-              p.stderr)
+              p.stderr
+          )
         end
       end
     catch err do
       process_ok.set(false)
 
-      log_level_1(tno ^
+      log_level_3(
+        tno ^
           " EXCEPTION during FFMPEG processing: " ^
-          "#{err.message}")
+          "#{err.message}"
+      )
     end
 
     # --------------------------------------------------------
@@ -1411,16 +1635,20 @@ def handle_file(f) =
           )
         )
       catch err do
-        log_level_2(tno ^
+        log_level_2(
+          tno ^
             " request.duration failed: " ^
-            "#{err.message}")
+            "#{err.message}"
+        )
 
         f_duration.set(0.)
       end
 
-      log_level_3(tno ^
+      log_level_3(
+        tno ^
           " Request duration: " ^
-          string(f_duration()))
+          string(f_duration())
+      )
 
       # ------------------------------------------------------
       # FFPROBE DURATION FALLBACK
@@ -1430,12 +1658,14 @@ def handle_file(f) =
         f_duration() == 0.
       then
         try
-          log_level_3(tno ^
-              " FFPROBE duration fallback (request=0)")
+          log_level_3(
+            tno ^
+              " FFPROBE duration fallback (request=0)"
+          )
 
           d =
             process.read(
-              "ffprobe -v quiet " ^
+              "ffprobe -v error " ^
                 "-print_format json " ^
                 "-select_streams a:0 " ^
                 "-show_entries format=duration " ^
@@ -1447,9 +1677,11 @@ def handle_file(f) =
 
           f_duration.set(float_of_string(d0.duration))
         catch err do
-          log_level_3(tno ^
+          log_level_3(
+            tno ^
               " FFPROBE failed to get duration!! - keep file - with error: " ^
-              "#{err.message}")
+              "#{err.message}"
+          )
 
           f_duration.set(16.)
         end
@@ -1459,17 +1691,21 @@ def handle_file(f) =
       # POST DURATION
       # ------------------------------------------------------
 
-      log_level_3(tno ^
+      log_level_3(
+        tno ^
           " POST DURATION " ^
-          string(f_duration()))
+          string(f_duration())
+      )
 
-      log_level_3(tno ^
+      log_level_3(
+        tno ^
           " CLOSE " ^
           string(f_duration()) ^
           " [" ^
-          format_time(float_of_string(string(f_duration()))) ^
+          format_time(f_duration()) ^
           "]  " ^
-          f)
+          f
+      )
 
       # ------------------------------------------------------
       # FINAL FILENAME / COLLISION PROTECTION
@@ -1478,7 +1714,7 @@ def handle_file(f) =
       if
         file.exists(tfilename())
       then
-        tfilename.set(time.string(tfilename() ^ "-%Y-%m-%d_%H-%M-%S." ^ ext()))
+        tfilename.set(tfilename() ^ time.string("-%Y-%m-%d_%H-%M-%S.") ^ ext())
       end
 
       # ------------------------------------------------------
@@ -1496,23 +1732,29 @@ def handle_file(f) =
         then
           final_copy_ok.set(true)
 
-          log_level_3(tno ^
+          log_level_3(
+            tno ^
               " Final file copy SUCCESS: " ^
-              tfilename())
+              tfilename()
+          )
         else
           final_copy_ok.set(false)
 
-          log_level_1(tno ^
+          log_level_1(
+            tno ^
               " ERROR: final file copy returned but destination does not exist: \
                " ^
-              tfilename())
+              tfilename()
+          )
         end
       catch err do
         final_copy_ok.set(false)
 
-        log_level_1(tno ^
+        log_level_1(
+          tno ^
             " ERROR copying final file: " ^
-            "#{err.message}")
+            "#{err.message}"
+        )
       end
 
       # ------------------------------------------------------
@@ -1532,9 +1774,11 @@ def handle_file(f) =
           try
             file.remove(f)
           catch err do
-            log_level_2(tno ^
+            log_level_2(
+              tno ^
                 " WARNING: could not remove source file: " ^
-                "#{err.message}")
+                "#{err.message}"
+            )
           end
         end
 
@@ -1548,9 +1792,11 @@ def handle_file(f) =
           try
             file.remove(tmp_filename)
           catch err do
-            log_level_2(tno ^
+            log_level_2(
+              tno ^
                 " WARNING: could not remove temporary source: " ^
-                "#{err.message}")
+                "#{err.message}"
+            )
           end
         end
 
@@ -1564,9 +1810,11 @@ def handle_file(f) =
           try
             file.remove(c)
           catch err do
-            log_level_2(tno ^
+            log_level_2(
+              tno ^
                 " WARNING: could not remove cover: " ^
-                "#{err.message}")
+                "#{err.message}"
+            )
           end
         end
 
@@ -1580,9 +1828,11 @@ def handle_file(f) =
           try
             file.remove(metaname)
           catch err do
-            log_level_3(tno ^
+            log_level_3(
+              tno ^
                 " WARNING: could not remove cover metadata file: " ^
-                "#{err.message}")
+                "#{err.message}"
+            )
           end
         end
 
@@ -1596,9 +1846,11 @@ def handle_file(f) =
           try
             file.remove(tmp_ext_filename)
           catch err do
-            log_level_2(tno ^
+            log_level_2(
+              tno ^
                 " WARNING: could not remove processed temp file: " ^
-                "#{err.message}")
+                "#{err.message}"
+            )
           end
         end
 
@@ -1615,13 +1867,17 @@ def handle_file(f) =
             try
               file.remove(tfilename())
 
-              log_level_3(tno ^
+              log_level_3(
+                tno ^
                   " Deleted unwanted fragment " ^
-                  tfilename())
+                  tfilename()
+              )
             catch err do
-              log_level_2(tno ^
+              log_level_2(
+                tno ^
                   " WARNING: could not delete unwanted fragment: " ^
-                  "#{err.message}")
+                  "#{err.message}"
+              )
             end
           end
         elsif
@@ -1632,22 +1888,28 @@ def handle_file(f) =
 
             file.move(tfilename(), "#{directory}/" ^ folder() ^ "/incomplete")
 
-            log_level_3(tno ^
+            log_level_3(
+              tno ^
                 " Moved unwanted fragment ID " ^
                 tno ^
                 " to incomplete. Filename " ^
-                tfilename())
+                tfilename()
+            )
           catch err do
-            log_level_2(tno ^
+            log_level_2(
+              tno ^
                 " WARNING: could not move unwanted fragment to incomplete: " ^
-                "#{err.message}")
+                "#{err.message}"
+            )
           end
         elsif
           f_duration() > 15.
         then
-          log_level_3(tno ^
+          log_level_3(
+            tno ^
               " Finished. Keeping file : " ^
-              tfilename())
+              tfilename()
+          )
         end
       else
         # ----------------------------------------------------
@@ -1655,13 +1917,17 @@ def handle_file(f) =
         # IMPORTANT: KEEP EVERYTHING
         # ----------------------------------------------------
 
-        log_level_1(tno ^
+        log_level_1(
+          tno ^
             " FINAL COPY FAILED - keeping original recording: " ^
-            f)
+            f
+        )
 
-        log_level_1(tno ^
+        log_level_1(
+          tno ^
             " Processed temporary file retained: " ^
-            tmp_ext_filename)
+            tmp_ext_filename
+        )
       end
     else
       # ------------------------------------------------------
@@ -1669,9 +1935,11 @@ def handle_file(f) =
       # IMPORTANT: KEEP ORIGINAL RECORDING
       # ------------------------------------------------------
 
-      log_level_1(tno ^
+      log_level_1(
+        tno ^
           " FFMPEG FAILED - keeping original recording: " ^
-          f)
+          f
+      )
 
       # ------------------------------------------------------
       # CLEAN FAILED TEMP SOURCE
@@ -1683,9 +1951,11 @@ def handle_file(f) =
         try
           file.remove(tmp_filename)
         catch err do
-          log_level_2(tno ^
+          log_level_2(
+            tno ^
               " WARNING: could not remove failed temp file: " ^
-              "#{err.message}")
+              "#{err.message}"
+          )
         end
       end
     end
@@ -1694,9 +1964,12 @@ def handle_file(f) =
     # SOURCE COPY FAILED
     # --------------------------------------------------------
 
-    log_level_1(tno ^
+    log_level_1(
+      tno ^
         " SOURCE COPY FAILED - keeping original recording: " ^
-        f)
+        f
+    )
+  end
   end
 end
 
@@ -1705,8 +1978,10 @@ end
 # ------------------------------------------------------------
 
 def handle_file_async(f) =
-  log_level_3("QUEUE POST-PROCESSING: " ^
-      f)
+  log_level_3(
+    "QUEUE POST-PROCESSING: " ^
+      f
+  )
 
   thread.run(fast=false, {handle_file(f)})
 end
@@ -1726,8 +2001,10 @@ def handle_file_dispatch(f) =
   if
     shutting_down()
   then
-    log_level_3("SHUTDOWN - PROCESSING SYNCHRONOUSLY: " ^
-        f)
+    log_level_3(
+      "SHUTDOWN - PROCESSING SYNCHRONOUSLY: " ^
+        f
+    )
 
     handle_file(f)
   else
@@ -1742,23 +2019,25 @@ end
 if
   transcode == "0"
 then
-  log_level_2("STREAM COPY MODE")
+  log_level_2(
+    "STREAM COPY MODE"
+  )
 
-  log_level_2("Recording.. " ^
-      filename())
+  log_level_2(
+    "Recording.. " ^
+      filename()
+  )
 
-  log_level_2("--press CTRL-C to stop/exit.")
+  log_level_2(
+    "--press CTRL-C to stop/exit."
+  )
 
   # Source
   s1 = buffer(buffer=5.0, input.ffmpeg(self_sync=true, poll_delay=0.1, urlx()))
 
-  # Metadata  
-																	
-							   
-																			
-	 
+  # Metadata
 
-  s1 = metadata.map(streamtitle_to_title, s1)																								 
+  s1 = metadata.map(streamtitle_to_title, s1)
 
   s1 = metadata.map(lower_ARTIST, s1)
 
@@ -1778,8 +2057,9 @@ then
       s1,
       reopen_on_metadata=handle_metadata,
       on_close=handle_file_dispatch,
-#      reopen_on_error=fun (_) -> 0.,
-      append=true,
+      append=
+        #      reopen_on_error=fun (_) -> 0.,
+        true,
       fallible=true
     )
 
@@ -1793,8 +2073,6 @@ then
   end
 
   on_shutdown(shutdown_f1)
-
-
 
   # ----------------------------------------------------------
   # PORTAUDIO
@@ -1829,19 +2107,13 @@ then
   thread.run(
     every=30.,
     fun () ->
-      log_level_2("Recording " ^
+      log_level_2(
+        "Recording " ^
           format_time(s1.time()) ^
           " " ^
-          nowrecording())
+          nowrecording()
+      )
   )
-
-  #Clocks
-
-%ifdef clock.dump
-  thread.run(
-    every=30., fun () -> log_level_4(clock.dump())
-  )
-%endif
 
   # ----------------------------------------------------------
   # ICECAST RELAY
@@ -1858,10 +2130,11 @@ then
       host=hostx,
       port=int_of_string(port),
       fallible=false,
-      name="LSR relay",
+      name=
+        "LSR relay",
       password=password,
       mount="stream",
-      #send_icy_metadata=false,
+      send_icy_metadata=true,
       mksafe(ffmpeg.decode.audio(s1))
     )
   end
@@ -1870,44 +2143,36 @@ then
   # WATCHDOG
   # ----------------------------------------------------------
 
-  def watchdog_s1() =
-    if
-      (timeout() != "0") and (s1.time() > string.to_float(timeout()))
-    then
-      log_level_2("Defined Timeout achieved , Exiting ...")
-
-      shutdown()
-    end
+  if
+    (timeout() != "0")
+  then
+    thread.run(delay=string.to_float(timeout()), shutdown)
   end
-
-  thread.run(every=1., watchdog_s1)
-
+else
   # ------------------------------------------------------------
   # STREAM TRANSCODING MODE
   # ------------------------------------------------------------
-else
-  log_level_2("STREAM TRANSCODING MODE")
 
-  log_level_2("Recording.. " ^
-      filename())
+  log_level_2(
+    "STREAM TRANSCODING MODE"
+  )
 
-  log_level_2("--press CTRL-C to stop/exit.")
+  log_level_2(
+    "Recording.. " ^
+      filename()
+  )
+
+  log_level_2(
+    "--press CTRL-C to stop/exit."
+  )
 
   # Source
   s2 = buffer(buffer=5.0, input.ffmpeg(self_sync=true, poll_delay=0.1, urlx()))
 
-  # Give the buffered recorder source its own stable CPU clock.
-  clock.assign_new(sync="cpu", [s2])
-
   # Metadata
-  
-																   
-							   
-																			
-	 
 
   s2 = metadata.map(streamtitle_to_title, s2)
-  
+
   s2 = metadata.map(lower_ARTIST, s2)
 
   s2 = metadata.map(lower_TITLE, s2)
@@ -1933,8 +2198,9 @@ else
       s2,
       reopen_on_metadata=handle_metadata,
       on_close=handle_file_dispatch,
-#      reopen_on_error=fun (_) -> 0.,
-      append=true,
+      append=
+        #      reopen_on_error=fun (_) -> 0.,
+        true,
       fallible=true
     )
 
@@ -1948,7 +2214,6 @@ else
   end
 
   on_shutdown(shutdown_f2)
-
 
   # ----------------------------------------------------------
   # PORTAUDIO
@@ -1985,10 +2250,11 @@ else
       host=hostx,
       port=int_of_string(port),
       fallible=false,
-      name="LSR relay",
+      name=
+        "LSR relay",
       password=password,
       mount="stream",
-      #send_icy_metadata=false,
+      send_icy_metadata=true,
       mksafe(s2)
     )
   end
@@ -2000,34 +2266,28 @@ else
   thread.run(
     every=30.,
     fun () ->
-      log_level_2("Recording " ^
+      log_level_2(
+        "Recording " ^
           format_time(s2.time()) ^
           " " ^
-          nowrecording())
+          nowrecording()
+      )
   )
 
   # ----------------------------------------------------------
   # WATCHDOG
   # ----------------------------------------------------------
 
-  def watchdog_s2() =
-    if
-      (timeout() != "0") and (s2.time() > string.to_float(timeout()))
-    then
-      log_level_2("Defined Timeout achieved , Exiting ...")
-
-      shutdown()
-    end
+  if
+    (timeout() != "0")
+  then
+    thread.run(delay=string.to_float(timeout()), shutdown)
   end
-
-  thread.run(every=1., watchdog_s2)
 end
 
 # ------------------------------------------------------------
 # HTTP COMMAND SERVER
 # ------------------------------------------------------------
-
-settings.harbor.bind_addrs := ["127.0.0.1"]
 
 # Add a STOP endpoint for shutdown
 def http_stop_all(_, response) =
@@ -2035,9 +2295,4 @@ def http_stop_all(_, response) =
   response.data("Done!")
 end
 
-harbor.http.register(
-  port=1234,
-  method="GET",
-  "/stop_all",
-  http_stop_all
-)
+harbor.http.register(port=1234, method="GET", "/stop_all", http_stop_all)
