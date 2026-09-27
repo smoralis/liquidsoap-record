@@ -1,6 +1,6 @@
 #record.liq
-#Version 1.0.55 2026-09-27
-#Liquidsoap 2.4.5
+#Version 1.0.56 2026-09-27
+#Liquidsoap 2.4.5 stable - 2.5.0 testing
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -station "<station>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> -timeout <0>
 
@@ -37,7 +37,7 @@ counter = ref(-1)
 nowrecording = ref("")
 cover = ref("")
 tunein_id = ref("")
-tunein_id.set(getopt(default="0","-id"))
+tunein_id.set(getopt(default="0", "-id"))
 relay = getopt(default="0", "-relay")
 hostx = getopt(default="localhost", "-host")
 port = getopt(default="8000", "-port")
@@ -66,6 +66,37 @@ def log_level_4(msg) =
   log(label="liquidsoap-record", level=4, msg)
 end
 
+# ------------------------------------------------------------
+#2.5.0 experimental Icecast server
+# ------------------------------------------------------------
+
+%ifversion >= 2.5.0
+log_level_2(
+  "Version >= 2.5.0 Starting Icecast server"
+)
+
+icecast_server = icecast.server(port=int_of_string(port), password="hackme")
+
+# React when a source connects
+icecast_server.on_source_connect(
+  fun (r) ->
+    log.important(
+      "Source connected on mount #{r.mount}"
+    )
+)
+
+# React when a source disconnects
+icecast_server.on_source_disconnect(
+  fun (r) ->
+    log.important(
+      "Source disconnected from mount #{r.mount}"
+    )
+)
+%else
+log_level_2(
+  "Version < 2.5.0 Not starting Icecast server"
+)
+%endif
 
 # ------------------------------------------------------------
 # INITIAL SETUP
@@ -110,9 +141,22 @@ settings.ffmpeg.log.verbosity := "error"
 # SCHEDULER
 # ------------------------------------------------------------
 
+#
+%ifversion >= 2.5.0
+log_level_2(
+  "Version >= 2.5.0 Setup scheduler options"
+)
+settings.scheduler.blocking_tasks := 8
+%else
+log_level_2(
+  "Version < 2.5.0 Setup scheduler options"
+)
 settings.scheduler.generic_queues.set(1)
 settings.scheduler.fast_queues.set(0)
 settings.scheduler.non_blocking_queues.set(1)
+%endif
+
+#common
 settings.scheduler.log.set(true)
 
 # ------------------------------------------------------------
@@ -275,9 +319,9 @@ def ffprobe_url() =
       cformat.set("ogg")
       ext.set("ogg")
     end
-	
-	#unsupported shutdown
-	if
+
+    #unsupported shutdown
+    if
       (codec_name() != "mp3")
     and
       (codec_name() != "aac")
@@ -296,7 +340,6 @@ def ffprobe_url() =
 
       shutdown()
     end
-	
   catch err do
     log_level_2(
       "ffprobe failed to get codec_name!!! with error: #{err.message}"
@@ -604,11 +647,7 @@ def http_download_cover(urlc, covername) =
         urlc
     )
 
-    file.download(
-      filename=covername,
-      timeout=30.,
-      urlc
-    )
+    file.download(filename=covername, timeout=30., urlc)
   catch err do
     log_level_3(
       "rec#" ^ string(counter()) ^
@@ -617,7 +656,6 @@ def http_download_cover(urlc, covername) =
     false
   end
 end
-
 
 # ------------------------------------------------------------
 # DOWNLOAD COVER
@@ -722,7 +760,7 @@ def download_cover(m, covername, count_id) =
       )
     end
   elsif
-    # Deezer cover 
+    # Deezer cover
 
     not found() and (m["artist"] != "") and (m["title"] != "")
   then
@@ -980,811 +1018,971 @@ def handle_file(f) =
       end
     end
   else
+    # --------------------------------------------------------
+    # COPY SOURCE TO TEMP
+    # --------------------------------------------------------
 
-  # --------------------------------------------------------
-  # COPY SOURCE TO TEMP
-  # --------------------------------------------------------
-
-  try
-    file.copy(f, tmp_filename)
-
-    copy_ok.set(true)
-
-    log_level_3(
-      tno ^
-        " Source copied to temporary file: " ^
-        tmp_filename
-    )
-  catch err do
-    copy_ok.set(false)
-
-    log_level_1(
-      tno ^
-        " ERROR copying source to temporary file: " ^
-        "#{err.message}"
-    )
-  end
-
-  # --------------------------------------------------------
-  # PROCESS ONLY IF SOURCE COPY SUCCEEDED
-  # --------------------------------------------------------
-
-  if
-    copy_ok()
-  then
     try
-      # ----------------------------------------------------
-      # FLAC + COVER
-      # ----------------------------------------------------
+      file.copy(f, tmp_filename)
 
-      if
-        (ext() == "flac") and (file.exists(c))
-      then
-        log_level_3(
-          tno ^
-            " FFMPEG-reprocess (FLAC) with COVER " ^
-            f
-        )
-
-        let p =
-          process.run(
-            "ffmpeg -y -v error " ^
-              "-i " ^
-              process.quote(tmp_filename) ^
-              " -i " ^
-              process.quote(c) ^
-              " -map 0:a -map 1 " ^
-              "-metadata:s:v title=\"Album cover\" " ^
-              "-metadata:s:v comment=\"Cover (front)\" " ^
-              "-disposition:v attached_pic " ^
-              process.quote(tmp_ext_filename)
-          )
-
-        if
-          (p.status == "exit")
-        and
-          (p.status.code == 0)
-        and
-          file.exists(tmp_ext_filename)
-        then
-          process_ok.set(true)
-
-          log_level_3(
-            tno ^
-              " FFmpeg FLAC + COVER SUCCESS - exit code: " ^
-              string(p.status.code)
-          )
-        else
-          process_ok.set(false)
-
-          log_level_1(
-            tno ^
-              " FFmpeg FLAC + COVER FAILED - status: " ^
-              string(p.status) ^
-              " code: " ^
-              string(p.status.code) ^
-              " stderr: " ^
-              p.stderr
-          )
-        end
-      end
-
-      # ----------------------------------------------------
-      # FLAC WITHOUT COVER
-      # ----------------------------------------------------
-
-      if
-        (ext() == "flac") and not file.exists(c)
-      then
-        log_level_3(
-          tno ^
-            " FFMPEG-reprocess (FLAC) " ^
-            f
-        )
-
-        let p =
-          process.run(
-            "ffmpeg -y -v error " ^
-              "-i " ^
-              process.quote(tmp_filename) ^
-              " " ^
-              process.quote(tmp_ext_filename)
-          )
-
-        if
-          (p.status == "exit")
-        and
-          (p.status.code == 0)
-        and
-          file.exists(tmp_ext_filename)
-        then
-          process_ok.set(true)
-
-          log_level_3(
-            tno ^
-              " FFmpeg FLAC SUCCESS - exit code: " ^
-              string(p.status.code)
-          )
-        else
-          process_ok.set(false)
-
-          log_level_1(
-            tno ^
-              " FFmpeg FLAC FAILED - status: " ^
-              string(p.status) ^
-              " code: " ^
-              string(p.status.code) ^
-              " stderr: " ^
-              p.stderr
-          )
-        end
-      end
-
-      # ----------------------------------------------------
-      # AAC / M4A + COVER
-      # ----------------------------------------------------
-
-      if
-        (ext() == "m4a") and (file.exists(c))
-      then
-        log_level_3(
-          tno ^
-            " FFMPEG-reprocess (AAC) with COVER " ^
-            f
-        )
-
-        let p =
-          process.run(
-            "ffmpeg -y -v error " ^
-              "-i " ^
-              process.quote(tmp_filename) ^
-              " -i " ^
-              process.quote(c) ^
-              " -map 0:a:0 -map 1:v:0 " ^
-              "-filter:v \"scale=w=500:h=500,format=yuvj420p\" " ^
-              "-c:a copy -c:v mjpeg " ^
-              "-disposition:v:0 attached_pic " ^
-              process.quote(tmp_ext_filename)
-          )
-
-        if
-          (p.status == "exit")
-        and
-          (p.status.code == 0)
-        and
-          file.exists(tmp_ext_filename)
-        then
-          process_ok.set(true)
-
-          log_level_3(
-            tno ^
-              " FFmpeg M4A + COVER SUCCESS - exit code: " ^
-              string(p.status.code)
-          )
-        else
-          process_ok.set(false)
-
-          log_level_1(
-            tno ^
-              " FFmpeg M4A + COVER FAILED - status: " ^
-              string(p.status) ^
-              " code: " ^
-              string(p.status.code) ^
-              " stderr: " ^
-              p.stderr
-          )
-        end
-      end
-
-      # ----------------------------------------------------
-      # AAC / M4A WITHOUT COVER
-      # ----------------------------------------------------
-
-      if
-        (ext() == "m4a") and not file.exists(c)
-      then
-        log_level_3(
-          tno ^
-            " FFMPEG-reprocess (AAC) " ^
-            f
-        )
-
-        let p =
-          process.run(
-            "ffmpeg -y -v error " ^
-              "-i " ^
-              process.quote(tmp_filename) ^
-              " -c:a copy " ^
-              process.quote(tmp_ext_filename)
-          )
-
-        if
-          (p.status == "exit")
-        and
-          (p.status.code == 0)
-        and
-          file.exists(tmp_ext_filename)
-        then
-          process_ok.set(true)
-
-          log_level_3(
-            tno ^
-              " FFmpeg M4A SUCCESS - exit code: " ^
-              string(p.status.code)
-          )
-        else
-          process_ok.set(false)
-
-          log_level_1(
-            tno ^
-              " FFmpeg M4A FAILED - status: " ^
-              string(p.status) ^
-              " code: " ^
-              string(p.status.code) ^
-              " stderr: " ^
-              p.stderr
-          )
-        end
-      end
-
-      # ----------------------------------------------------
-      # MP3 + COVER
-      # ----------------------------------------------------
-
-      if
-        (ext() == "mp3") and (file.exists(c))
-      then
-        log_level_3(
-          tno ^
-            " FFMPEG-reprocess (MP3) with COVER " ^
-            f
-        )
-
-        let p =
-          process.run(
-            "ffmpeg -y -v error " ^
-              "-i " ^
-              process.quote(tmp_filename) ^
-              " -i " ^
-              process.quote(c) ^
-              " -map 0:a:0 -map 1:v:0 " ^
-              "-id3v2_version 3 " ^
-              "-metadata:s:v title=\"Album cover\" " ^
-              "-metadata:s:v comment=\"Cover (front)\" " ^
-              "-c:a copy " ^
-              process.quote(tmp_ext_filename)
-          )
-
-        if
-          (p.status == "exit")
-        and
-          (p.status.code == 0)
-        and
-          file.exists(tmp_ext_filename)
-        then
-          process_ok.set(true)
-
-          log_level_3(
-            tno ^
-              " FFmpeg MP3 + COVER SUCCESS - exit code: " ^
-              string(p.status.code)
-          )
-        else
-          process_ok.set(false)
-
-          log_level_1(
-            tno ^
-              " FFmpeg MP3 + COVER FAILED - status: " ^
-              string(p.status) ^
-              " code: " ^
-              string(p.status.code) ^
-              " stderr: " ^
-              p.stderr
-          )
-        end
-      end
-
-      # ----------------------------------------------------
-      # MP3 WITHOUT COVER
-      # ----------------------------------------------------
-
-      if
-        (ext() == "mp3") and not file.exists(c)
-      then
-        log_level_3(
-          tno ^
-            " FFMPEG-reprocess (MP3) " ^
-            f
-        )
-
-        let p =
-          process.run(
-            "ffmpeg -y -v error " ^
-              "-i " ^
-              process.quote(tmp_filename) ^
-              " -c:a copy " ^
-              process.quote(tmp_ext_filename)
-          )
-
-        if
-          (p.status == "exit")
-        and
-          (p.status.code == 0)
-        and
-          file.exists(tmp_ext_filename)
-        then
-          process_ok.set(true)
-
-          log_level_3(
-            tno ^
-              " FFmpeg MP3 SUCCESS - exit code: " ^
-              string(p.status.code)
-          )
-        else
-          process_ok.set(false)
-
-          log_level_1(
-            tno ^
-              " FFmpeg MP3 FAILED - status: " ^
-              string(p.status) ^
-              " code: " ^
-              string(p.status.code) ^
-              " stderr: " ^
-              p.stderr
-          )
-        end
-      end
-
-      # ----------------------------------------------------
-      # OPUS + COVER
-      # ----------------------------------------------------
-
-      if
-        (ext() == "opus") and (file.exists(c))
-      then
-        log_level_3(
-          tno ^
-            " FFMPEG-reprocess (OPUS) with COVER " ^
-            f
-        )
-
-        let pm =
-          process.run(
-            "python3 " ^
-              process.quote("build_cover_metadata.py") ^
-              " " ^
-              process.quote(c) ^
-              " " ^
-              process.quote(metaname)
-          )
-
-        let p =
-          if
-            (pm.status == "exit")
-          and
-            (pm.status.code == 0)
-          and
-            file.exists(metaname)
-          then
-            process.run(
-              "ffmpeg -y -v error " ^
-                "-i " ^
-                process.quote(tmp_filename) ^
-                " -i " ^
-                process.quote(metaname) ^
-                " -map_metadata 1 -map 0:a -c:a copy " ^
-                process.quote(tmp_ext_filename)
-            )
-          else
-            log_level_3(
-              tno ^
-                " Failed to build METADATA_BLOCK_PICTURE - stderr: " ^
-                pm.stderr
-            )
-
-            process.run(
-              "ffmpeg -y -v error " ^
-                "-i " ^
-                process.quote(tmp_filename) ^
-                " -c:a copy " ^
-                process.quote(tmp_ext_filename)
-            )
-          end
-
-        if
-          (p.status == "exit")
-        and
-          (p.status.code == 0)
-        and
-          file.exists(tmp_ext_filename)
-        then
-          process_ok.set(true)
-
-          log_level_3(
-            tno ^
-              " FFmpeg OPUS + COVER SUCCESS - exit code: " ^
-              string(p.status.code)
-          )
-        else
-          process_ok.set(false)
-
-          log_level_1(
-            tno ^
-              " FFmpeg OPUS + COVER FAILED - status: " ^
-              string(p.status) ^
-              " code: " ^
-              string(p.status.code) ^
-              " stderr: " ^
-              p.stderr
-          )
-        end
-      end
-      # ----------------------------------------------------
-      # OPUS WITHOUT COVER
-      # ----------------------------------------------------
-
-      if
-        (ext() == "opus") and not file.exists(c)
-      then
-        log_level_3(
-          tno ^
-            " FFMPEG-reprocess (OPUS) " ^
-            f
-        )
-
-        let p =
-          process.run(
-            "ffmpeg -y -v error " ^
-              "-i " ^
-              process.quote(tmp_filename) ^
-              " -c:a copy " ^
-              process.quote(tmp_ext_filename)
-          )
-
-        if
-          (p.status == "exit")
-        and
-          (p.status.code == 0)
-        and
-          file.exists(tmp_ext_filename)
-        then
-          process_ok.set(true)
-
-          log_level_3(
-            tno ^
-              " FFmpeg OPUS SUCCESS - exit code: " ^
-              string(p.status.code)
-          )
-        else
-          process_ok.set(false)
-
-          log_level_1(
-            tno ^
-              " FFmpeg OPUS FAILED - status: " ^
-              string(p.status) ^
-              " code: " ^
-              string(p.status.code) ^
-              " stderr: " ^
-              p.stderr
-          )
-        end
-      end
-
-      # ----------------------------------------------------
-      # VORBIS / OGG + COVER
-      # ----------------------------------------------------
-
-      if
-        (ext() == "ogg") and (file.exists(c))
-      then
-        log_level_3(
-          tno ^
-            " FFMPEG-reprocess (VORBIS) with COVER " ^
-            f
-        )
-
-        let pm =
-          process.run(
-            "python3 " ^
-              process.quote("build_cover_metadata.py") ^
-              " " ^
-              process.quote(c) ^
-              " " ^
-              process.quote(metaname)
-          )
-
-        let p =
-          if
-            (pm.status == "exit")
-          and
-            (pm.status.code == 0)
-          and
-            file.exists(metaname)
-          then
-            process.run(
-              "ffmpeg -y -v error " ^
-                "-i " ^
-                process.quote(tmp_filename) ^
-                " -i " ^
-                process.quote(metaname) ^
-                " -map_metadata 1 -map 0:a -c:a copy " ^
-                process.quote(tmp_ext_filename)
-            )
-          else
-            log_level_3(
-              tno ^
-                " Failed to build METADATA_BLOCK_PICTURE - stderr: " ^
-                pm.stderr
-            )
-
-            process.run(
-              "ffmpeg -y -v error " ^
-                "-i " ^
-                process.quote(tmp_filename) ^
-                " -c:a copy " ^
-                process.quote(tmp_ext_filename)
-            )
-          end
-
-        if
-          (p.status == "exit")
-        and
-          (p.status.code == 0)
-        and
-          file.exists(tmp_ext_filename)
-        then
-          process_ok.set(true)
-
-          log_level_3(
-            tno ^
-              " FFmpeg OGG + COVER SUCCESS - exit code: " ^
-              string(p.status.code)
-          )
-        else
-          process_ok.set(false)
-
-          log_level_1(
-            tno ^
-              " FFmpeg OGG + COVER FAILED - status: " ^
-              string(p.status) ^
-              " code: " ^
-              string(p.status.code) ^
-              " stderr: " ^
-              p.stderr
-          )
-        end
-      end
-
-      # ----------------------------------------------------
-      # VORBIS / OGG WITHOUT COVER
-      # ----------------------------------------------------
-
-      if
-        (ext() == "ogg") and not file.exists(c)
-      then
-        log_level_3(
-          tno ^
-            " FFMPEG-reprocess (VORBIS) " ^
-            f
-        )
-
-        let p =
-          process.run(
-            "ffmpeg -y -v error " ^
-              "-i " ^
-              process.quote(tmp_filename) ^
-              " -c:a copy " ^
-              process.quote(tmp_ext_filename)
-          )
-
-        if
-          (p.status == "exit")
-        and
-          (p.status.code == 0)
-        and
-          file.exists(tmp_ext_filename)
-        then
-          process_ok.set(true)
-
-          log_level_3(
-            tno ^
-              " FFmpeg OGG SUCCESS - exit code: " ^
-              string(p.status.code)
-          )
-        else
-          process_ok.set(false)
-
-          log_level_1(
-            tno ^
-              " FFmpeg OGG FAILED - status: " ^
-              string(p.status) ^
-              " code: " ^
-              string(p.status.code) ^
-              " stderr: " ^
-              p.stderr
-          )
-        end
-      end
-    catch err do
-      process_ok.set(false)
+      copy_ok.set(true)
 
       log_level_3(
         tno ^
-          " EXCEPTION during FFMPEG processing: " ^
+          " Source copied to temporary file: " ^
+          tmp_filename
+      )
+    catch err do
+      copy_ok.set(false)
+
+      log_level_1(
+        tno ^
+          " ERROR copying source to temporary file: " ^
           "#{err.message}"
       )
     end
 
     # --------------------------------------------------------
-    # ONLY CONTINUE IF FFMPEG SUCCEEDED
-    # AND OUTPUT FILE EXISTS
+    # PROCESS ONLY IF SOURCE COPY SUCCEEDED
     # --------------------------------------------------------
 
     if
-      process_ok() and file.exists(tmp_ext_filename)
+      copy_ok()
     then
-      # ------------------------------------------------------
-      # GET DURATION
-      # ------------------------------------------------------
-
       try
-        f_duration.set(
-          null.get(
-            default=0.,
-            request.duration(resolve_metadata=false, tmp_ext_filename)
-          )
-        )
-      catch err do
-        log_level_2(
-          tno ^
-            " request.duration failed: " ^
-            "#{err.message}"
-        )
+        # ----------------------------------------------------
+        # FLAC + COVER
+        # ----------------------------------------------------
 
-        f_duration.set(0.)
-      end
-
-      log_level_3(
-        tno ^
-          " Request duration: " ^
-          string(f_duration())
-      )
-
-      # ------------------------------------------------------
-      # FFPROBE DURATION FALLBACK
-      # ------------------------------------------------------
-
-      if
-        f_duration() == 0.
-      then
-        try
+        if
+          (ext() == "flac") and (file.exists(c))
+        then
           log_level_3(
             tno ^
-              " FFPROBE duration fallback (request=0)"
+              " FFMPEG-reprocess (FLAC) with COVER " ^
+              f
           )
 
-          d =
-            process.read(
-              "ffprobe -v error " ^
-                "-print_format json " ^
-                "-select_streams a:0 " ^
-                "-show_entries format=duration " ^
-                "-of json=compact=1 " ^
+          let p =
+            process.run(
+              "ffmpeg -y -v error " ^
+                "-i " ^
+                process.quote(tmp_filename) ^
+                " -i " ^
+                process.quote(c) ^
+                " -map 0:a -map 1 " ^
+                "-metadata:s:v title=\"Album cover\" " ^
+                "-metadata:s:v comment=\"Cover (front)\" " ^
+                "-disposition:v attached_pic " ^
                 process.quote(tmp_ext_filename)
             )
 
-          let json.parse ({format = d0} : {format: {duration: string}}) = d
+          if
+            (p.status == "exit")
+          and
+            (p.status.code == 0)
+          and
+            file.exists(tmp_ext_filename)
+          then
+            process_ok.set(true)
 
-          f_duration.set(float_of_string(d0.duration))
-        catch err do
-          log_level_3(
-            tno ^
-              " FFPROBE failed to get duration!! - keep file - with error: " ^
-              "#{err.message}"
-          )
-
-          f_duration.set(16.)
-        end
-      end
-
-      # ------------------------------------------------------
-      # POST DURATION
-      # ------------------------------------------------------
-
-      log_level_3(
-        tno ^
-          " POST DURATION " ^
-          string(f_duration())
-      )
-
-      log_level_3(
-        tno ^
-          " CLOSE " ^
-          string(f_duration()) ^
-          " [" ^
-          format_time(f_duration()) ^
-          "]  " ^
-          f
-      )
-
-      # ------------------------------------------------------
-      # FINAL FILENAME / COLLISION PROTECTION
-      # ------------------------------------------------------
-
-      if
-        file.exists(tfilename())
-      then
-        tfilename.set(tfilename() ^ time.string("-%Y-%m-%d_%H-%M-%S.") ^ ext())
-      end
-
-      # ------------------------------------------------------
-      # FINAL COPY
-      # DO NOT DELETE ORIGINAL UNTIL THIS SUCCEEDS
-      # ------------------------------------------------------
-
-      final_copy_ok.set(false)
-
-      try
-        file.copy(tmp_ext_filename, tfilename())
-
-        if
-          file.exists(tfilename())
-        then
-          final_copy_ok.set(true)
-
-          log_level_3(
-            tno ^
-              " Final file copy SUCCESS: " ^
-              tfilename()
-          )
-        else
-          final_copy_ok.set(false)
-
-          log_level_1(
-            tno ^
-              " ERROR: final file copy returned but destination does not exist: \
-               " ^
-              tfilename()
-          )
-        end
-      catch err do
-        final_copy_ok.set(false)
-
-        log_level_1(
-          tno ^
-            " ERROR copying final file: " ^
-            "#{err.message}"
-        )
-      end
-
-      # ------------------------------------------------------
-      # ONLY CLEAN ORIGINAL/TEMPS AFTER FINAL COPY SUCCEEDED
-      # ------------------------------------------------------
-
-      if
-        final_copy_ok()
-      then
-        # ----------------------------------------------------
-        # REMOVE ORIGINAL SOURCE
-        # ----------------------------------------------------
-
-        if
-          file.exists(f)
-        then
-          try
-            file.remove(f)
-          catch err do
-            log_level_2(
+            log_level_3(
               tno ^
-                " WARNING: could not remove source file: " ^
-                "#{err.message}"
+                " FFmpeg FLAC + COVER SUCCESS - exit code: " ^
+                string(p.status.code)
+            )
+          else
+            process_ok.set(false)
+
+            log_level_1(
+              tno ^
+                " FFmpeg FLAC + COVER FAILED - status: " ^
+                string(p.status) ^
+                " code: " ^
+                string(p.status.code) ^
+                " stderr: " ^
+                p.stderr
             )
           end
         end
 
         # ----------------------------------------------------
-        # REMOVE TEMP SOURCE
+        # FLAC WITHOUT COVER
         # ----------------------------------------------------
+
+        if
+          (ext() == "flac") and not file.exists(c)
+        then
+          log_level_3(
+            tno ^
+              " FFMPEG-reprocess (FLAC) " ^
+              f
+          )
+
+          let p =
+            process.run(
+              "ffmpeg -y -v error " ^
+                "-i " ^
+                process.quote(tmp_filename) ^
+                " " ^
+                process.quote(tmp_ext_filename)
+            )
+
+          if
+            (p.status == "exit")
+          and
+            (p.status.code == 0)
+          and
+            file.exists(tmp_ext_filename)
+          then
+            process_ok.set(true)
+
+            log_level_3(
+              tno ^
+                " FFmpeg FLAC SUCCESS - exit code: " ^
+                string(p.status.code)
+            )
+          else
+            process_ok.set(false)
+
+            log_level_1(
+              tno ^
+                " FFmpeg FLAC FAILED - status: " ^
+                string(p.status) ^
+                " code: " ^
+                string(p.status.code) ^
+                " stderr: " ^
+                p.stderr
+            )
+          end
+        end
+
+        # ----------------------------------------------------
+        # AAC / M4A + COVER
+        # ----------------------------------------------------
+
+        if
+          (ext() == "m4a") and (file.exists(c))
+        then
+          log_level_3(
+            tno ^
+              " FFMPEG-reprocess (AAC) with COVER " ^
+              f
+          )
+
+          let p =
+            process.run(
+              "ffmpeg -y -v error " ^
+                "-i " ^
+                process.quote(tmp_filename) ^
+                " -i " ^
+                process.quote(c) ^
+                " -map 0:a:0 -map 1:v:0 " ^
+                "-filter:v \"scale=w=500:h=500,format=yuvj420p\" " ^
+                "-c:a copy -c:v mjpeg " ^
+                "-disposition:v:0 attached_pic " ^
+                process.quote(tmp_ext_filename)
+            )
+
+          if
+            (p.status == "exit")
+          and
+            (p.status.code == 0)
+          and
+            file.exists(tmp_ext_filename)
+          then
+            process_ok.set(true)
+
+            log_level_3(
+              tno ^
+                " FFmpeg M4A + COVER SUCCESS - exit code: " ^
+                string(p.status.code)
+            )
+          else
+            process_ok.set(false)
+
+            log_level_1(
+              tno ^
+                " FFmpeg M4A + COVER FAILED - status: " ^
+                string(p.status) ^
+                " code: " ^
+                string(p.status.code) ^
+                " stderr: " ^
+                p.stderr
+            )
+          end
+        end
+
+        # ----------------------------------------------------
+        # AAC / M4A WITHOUT COVER
+        # ----------------------------------------------------
+
+        if
+          (ext() == "m4a") and not file.exists(c)
+        then
+          log_level_3(
+            tno ^
+              " FFMPEG-reprocess (AAC) " ^
+              f
+          )
+
+          let p =
+            process.run(
+              "ffmpeg -y -v error " ^
+                "-i " ^
+                process.quote(tmp_filename) ^
+                " -c:a copy " ^
+                process.quote(tmp_ext_filename)
+            )
+
+          if
+            (p.status == "exit")
+          and
+            (p.status.code == 0)
+          and
+            file.exists(tmp_ext_filename)
+          then
+            process_ok.set(true)
+
+            log_level_3(
+              tno ^
+                " FFmpeg M4A SUCCESS - exit code: " ^
+                string(p.status.code)
+            )
+          else
+            process_ok.set(false)
+
+            log_level_1(
+              tno ^
+                " FFmpeg M4A FAILED - status: " ^
+                string(p.status) ^
+                " code: " ^
+                string(p.status.code) ^
+                " stderr: " ^
+                p.stderr
+            )
+          end
+        end
+
+        # ----------------------------------------------------
+        # MP3 + COVER
+        # ----------------------------------------------------
+
+        if
+          (ext() == "mp3") and (file.exists(c))
+        then
+          log_level_3(
+            tno ^
+              " FFMPEG-reprocess (MP3) with COVER " ^
+              f
+          )
+
+          let p =
+            process.run(
+              "ffmpeg -y -v error " ^
+                "-i " ^
+                process.quote(tmp_filename) ^
+                " -i " ^
+                process.quote(c) ^
+                " -map 0:a:0 -map 1:v:0 " ^
+                "-id3v2_version 3 " ^
+                "-metadata:s:v title=\"Album cover\" " ^
+                "-metadata:s:v comment=\"Cover (front)\" " ^
+                "-c:a copy " ^
+                process.quote(tmp_ext_filename)
+            )
+
+          if
+            (p.status == "exit")
+          and
+            (p.status.code == 0)
+          and
+            file.exists(tmp_ext_filename)
+          then
+            process_ok.set(true)
+
+            log_level_3(
+              tno ^
+                " FFmpeg MP3 + COVER SUCCESS - exit code: " ^
+                string(p.status.code)
+            )
+          else
+            process_ok.set(false)
+
+            log_level_1(
+              tno ^
+                " FFmpeg MP3 + COVER FAILED - status: " ^
+                string(p.status) ^
+                " code: " ^
+                string(p.status.code) ^
+                " stderr: " ^
+                p.stderr
+            )
+          end
+        end
+
+        # ----------------------------------------------------
+        # MP3 WITHOUT COVER
+        # ----------------------------------------------------
+
+        if
+          (ext() == "mp3") and not file.exists(c)
+        then
+          log_level_3(
+            tno ^
+              " FFMPEG-reprocess (MP3) " ^
+              f
+          )
+
+          let p =
+            process.run(
+              "ffmpeg -y -v error " ^
+                "-i " ^
+                process.quote(tmp_filename) ^
+                " -c:a copy " ^
+                process.quote(tmp_ext_filename)
+            )
+
+          if
+            (p.status == "exit")
+          and
+            (p.status.code == 0)
+          and
+            file.exists(tmp_ext_filename)
+          then
+            process_ok.set(true)
+
+            log_level_3(
+              tno ^
+                " FFmpeg MP3 SUCCESS - exit code: " ^
+                string(p.status.code)
+            )
+          else
+            process_ok.set(false)
+
+            log_level_1(
+              tno ^
+                " FFmpeg MP3 FAILED - status: " ^
+                string(p.status) ^
+                " code: " ^
+                string(p.status.code) ^
+                " stderr: " ^
+                p.stderr
+            )
+          end
+        end
+
+        # ----------------------------------------------------
+        # OPUS + COVER
+        # ----------------------------------------------------
+
+        if
+          (ext() == "opus") and (file.exists(c))
+        then
+          log_level_3(
+            tno ^
+              " FFMPEG-reprocess (OPUS) with COVER " ^
+              f
+          )
+
+          let pm =
+            process.run(
+              "python3 " ^
+                process.quote("build_cover_metadata.py") ^
+                " " ^
+                process.quote(c) ^
+                " " ^
+                process.quote(metaname)
+            )
+
+          let p =
+            if
+              (pm.status == "exit")
+            and
+              (pm.status.code == 0)
+            and
+              file.exists(metaname)
+            then
+              process.run(
+                "ffmpeg -y -v error " ^
+                  "-i " ^
+                  process.quote(tmp_filename) ^
+                  " -i " ^
+                  process.quote(metaname) ^
+                  " -map_metadata 1 -map 0:a -c:a copy " ^
+                  process.quote(tmp_ext_filename)
+              )
+            else
+              log_level_3(
+                tno ^
+                  " Failed to build METADATA_BLOCK_PICTURE - stderr: " ^
+                  pm.stderr
+              )
+
+              process.run(
+                "ffmpeg -y -v error " ^
+                  "-i " ^
+                  process.quote(tmp_filename) ^
+                  " -c:a copy " ^
+                  process.quote(tmp_ext_filename)
+              )
+            end
+
+          if
+            (p.status == "exit")
+          and
+            (p.status.code == 0)
+          and
+            file.exists(tmp_ext_filename)
+          then
+            process_ok.set(true)
+
+            log_level_3(
+              tno ^
+                " FFmpeg OPUS + COVER SUCCESS - exit code: " ^
+                string(p.status.code)
+            )
+          else
+            process_ok.set(false)
+
+            log_level_1(
+              tno ^
+                " FFmpeg OPUS + COVER FAILED - status: " ^
+                string(p.status) ^
+                " code: " ^
+                string(p.status.code) ^
+                " stderr: " ^
+                p.stderr
+            )
+          end
+        end
+        # ----------------------------------------------------
+        # OPUS WITHOUT COVER
+        # ----------------------------------------------------
+
+        if
+          (ext() == "opus") and not file.exists(c)
+        then
+          log_level_3(
+            tno ^
+              " FFMPEG-reprocess (OPUS) " ^
+              f
+          )
+
+          let p =
+            process.run(
+              "ffmpeg -y -v error " ^
+                "-i " ^
+                process.quote(tmp_filename) ^
+                " -c:a copy " ^
+                process.quote(tmp_ext_filename)
+            )
+
+          if
+            (p.status == "exit")
+          and
+            (p.status.code == 0)
+          and
+            file.exists(tmp_ext_filename)
+          then
+            process_ok.set(true)
+
+            log_level_3(
+              tno ^
+                " FFmpeg OPUS SUCCESS - exit code: " ^
+                string(p.status.code)
+            )
+          else
+            process_ok.set(false)
+
+            log_level_1(
+              tno ^
+                " FFmpeg OPUS FAILED - status: " ^
+                string(p.status) ^
+                " code: " ^
+                string(p.status.code) ^
+                " stderr: " ^
+                p.stderr
+            )
+          end
+        end
+
+        # ----------------------------------------------------
+        # VORBIS / OGG + COVER
+        # ----------------------------------------------------
+
+        if
+          (ext() == "ogg") and (file.exists(c))
+        then
+          log_level_3(
+            tno ^
+              " FFMPEG-reprocess (VORBIS) with COVER " ^
+              f
+          )
+
+          let pm =
+            process.run(
+              "python3 " ^
+                process.quote("build_cover_metadata.py") ^
+                " " ^
+                process.quote(c) ^
+                " " ^
+                process.quote(metaname)
+            )
+
+          let p =
+            if
+              (pm.status == "exit")
+            and
+              (pm.status.code == 0)
+            and
+              file.exists(metaname)
+            then
+              process.run(
+                "ffmpeg -y -v error " ^
+                  "-i " ^
+                  process.quote(tmp_filename) ^
+                  " -i " ^
+                  process.quote(metaname) ^
+                  " -map_metadata 1 -map 0:a -c:a copy " ^
+                  process.quote(tmp_ext_filename)
+              )
+            else
+              log_level_3(
+                tno ^
+                  " Failed to build METADATA_BLOCK_PICTURE - stderr: " ^
+                  pm.stderr
+              )
+
+              process.run(
+                "ffmpeg -y -v error " ^
+                  "-i " ^
+                  process.quote(tmp_filename) ^
+                  " -c:a copy " ^
+                  process.quote(tmp_ext_filename)
+              )
+            end
+
+          if
+            (p.status == "exit")
+          and
+            (p.status.code == 0)
+          and
+            file.exists(tmp_ext_filename)
+          then
+            process_ok.set(true)
+
+            log_level_3(
+              tno ^
+                " FFmpeg OGG + COVER SUCCESS - exit code: " ^
+                string(p.status.code)
+            )
+          else
+            process_ok.set(false)
+
+            log_level_1(
+              tno ^
+                " FFmpeg OGG + COVER FAILED - status: " ^
+                string(p.status) ^
+                " code: " ^
+                string(p.status.code) ^
+                " stderr: " ^
+                p.stderr
+            )
+          end
+        end
+
+        # ----------------------------------------------------
+        # VORBIS / OGG WITHOUT COVER
+        # ----------------------------------------------------
+
+        if
+          (ext() == "ogg") and not file.exists(c)
+        then
+          log_level_3(
+            tno ^
+              " FFMPEG-reprocess (VORBIS) " ^
+              f
+          )
+
+          let p =
+            process.run(
+              "ffmpeg -y -v error " ^
+                "-i " ^
+                process.quote(tmp_filename) ^
+                " -c:a copy " ^
+                process.quote(tmp_ext_filename)
+            )
+
+          if
+            (p.status == "exit")
+          and
+            (p.status.code == 0)
+          and
+            file.exists(tmp_ext_filename)
+          then
+            process_ok.set(true)
+
+            log_level_3(
+              tno ^
+                " FFmpeg OGG SUCCESS - exit code: " ^
+                string(p.status.code)
+            )
+          else
+            process_ok.set(false)
+
+            log_level_1(
+              tno ^
+                " FFmpeg OGG FAILED - status: " ^
+                string(p.status) ^
+                " code: " ^
+                string(p.status.code) ^
+                " stderr: " ^
+                p.stderr
+            )
+          end
+        end
+      catch err do
+        process_ok.set(false)
+
+        log_level_3(
+          tno ^
+            " EXCEPTION during FFMPEG processing: " ^
+            "#{err.message}"
+        )
+      end
+
+      # --------------------------------------------------------
+      # ONLY CONTINUE IF FFMPEG SUCCEEDED
+      # AND OUTPUT FILE EXISTS
+      # --------------------------------------------------------
+
+      if
+        process_ok() and file.exists(tmp_ext_filename)
+      then
+        # ------------------------------------------------------
+        # GET DURATION
+        # ------------------------------------------------------
+
+        try
+          f_duration.set(
+            null.get(
+              default=0.,
+              request.duration(resolve_metadata=false, tmp_ext_filename)
+            )
+          )
+        catch err do
+          log_level_2(
+            tno ^
+              " request.duration failed: " ^
+              "#{err.message}"
+          )
+
+          f_duration.set(0.)
+        end
+
+        log_level_3(
+          tno ^
+            " Request duration: " ^
+            string(f_duration())
+        )
+
+        # ------------------------------------------------------
+        # FFPROBE DURATION FALLBACK
+        # ------------------------------------------------------
+
+        if
+          f_duration() == 0.
+        then
+          try
+            log_level_3(
+              tno ^
+                " FFPROBE duration fallback (request=0)"
+            )
+
+            d =
+              process.read(
+                "ffprobe -v error " ^
+                  "-print_format json " ^
+                  "-select_streams a:0 " ^
+                  "-show_entries format=duration " ^
+                  "-of json=compact=1 " ^
+                  process.quote(tmp_ext_filename)
+              )
+
+            let json.parse ({format = d0} : {format: {duration: string}}) = d
+
+            f_duration.set(float_of_string(d0.duration))
+          catch err do
+            log_level_3(
+              tno ^
+                " FFPROBE failed to get duration!! - keep file - with error: " ^
+                "#{err.message}"
+            )
+
+            f_duration.set(16.)
+          end
+        end
+
+        # ------------------------------------------------------
+        # POST DURATION
+        # ------------------------------------------------------
+
+        log_level_3(
+          tno ^
+            " POST DURATION " ^
+            string(f_duration())
+        )
+
+        log_level_3(
+          tno ^
+            " CLOSE " ^
+            string(f_duration()) ^
+            " [" ^
+            format_time(f_duration()) ^
+            "]  " ^
+            f
+        )
+
+        # ------------------------------------------------------
+        # FINAL FILENAME / COLLISION PROTECTION
+        # ------------------------------------------------------
+
+        if
+          file.exists(tfilename())
+        then
+          tfilename.set(
+            tfilename() ^ time.string("-%Y-%m-%d_%H-%M-%S.") ^ ext()
+          )
+        end
+
+        # ------------------------------------------------------
+        # FINAL COPY
+        # DO NOT DELETE ORIGINAL UNTIL THIS SUCCEEDS
+        # ------------------------------------------------------
+
+        final_copy_ok.set(false)
+
+        try
+          file.copy(tmp_ext_filename, tfilename())
+
+          if
+            file.exists(tfilename())
+          then
+            final_copy_ok.set(true)
+
+            log_level_3(
+              tno ^
+                " Final file copy SUCCESS: " ^
+                tfilename()
+            )
+          else
+            final_copy_ok.set(false)
+
+            log_level_1(
+              tno ^
+                " ERROR: final file copy returned but destination does not \
+                 exist: " ^
+                tfilename()
+            )
+          end
+        catch err do
+          final_copy_ok.set(false)
+
+          log_level_1(
+            tno ^
+              " ERROR copying final file: " ^
+              "#{err.message}"
+          )
+        end
+
+        # ------------------------------------------------------
+        # ONLY CLEAN ORIGINAL/TEMPS AFTER FINAL COPY SUCCEEDED
+        # ------------------------------------------------------
+
+        if
+          final_copy_ok()
+        then
+          # ----------------------------------------------------
+          # REMOVE ORIGINAL SOURCE
+          # ----------------------------------------------------
+
+          if
+            file.exists(f)
+          then
+            try
+              file.remove(f)
+            catch err do
+              log_level_2(
+                tno ^
+                  " WARNING: could not remove source file: " ^
+                  "#{err.message}"
+              )
+            end
+          end
+
+          # ----------------------------------------------------
+          # REMOVE TEMP SOURCE
+          # ----------------------------------------------------
+
+          if
+            file.exists(tmp_filename)
+          then
+            try
+              file.remove(tmp_filename)
+            catch err do
+              log_level_2(
+                tno ^
+                  " WARNING: could not remove temporary source: " ^
+                  "#{err.message}"
+              )
+            end
+          end
+
+          # ----------------------------------------------------
+          # REMOVE COVER
+          # ----------------------------------------------------
+
+          if
+            file.exists(c)
+          then
+            try
+              file.remove(c)
+            catch err do
+              log_level_2(
+                tno ^
+                  " WARNING: could not remove cover: " ^
+                  "#{err.message}"
+              )
+            end
+          end
+
+          # ----------------------------------------------------
+          # REMOVE COVER METADATA FILE
+          # ----------------------------------------------------
+
+          if
+            file.exists(metaname)
+          then
+            try
+              file.remove(metaname)
+            catch err do
+              log_level_3(
+                tno ^
+                  " WARNING: could not remove cover metadata file: " ^
+                  "#{err.message}"
+              )
+            end
+          end
+
+          # ----------------------------------------------------
+          # REMOVE PROCESSED TEMP
+          # ----------------------------------------------------
+
+          if
+            file.exists(tmp_ext_filename)
+          then
+            try
+              file.remove(tmp_ext_filename)
+            catch err do
+              log_level_2(
+                tno ^
+                  " WARNING: could not remove processed temp file: " ^
+                  "#{err.message}"
+              )
+            end
+          end
+
+          # ----------------------------------------------------
+          # SHORT FRAGMENT HANDLING
+          # ----------------------------------------------------
+
+          if
+            (f_duration() < 15.) and (keep == "0")
+          then
+            if
+              file.exists(tfilename())
+            then
+              try
+                file.remove(tfilename())
+
+                log_level_3(
+                  tno ^
+                    " Deleted unwanted fragment " ^
+                    tfilename()
+                )
+              catch err do
+                log_level_2(
+                  tno ^
+                    " WARNING: could not delete unwanted fragment: " ^
+                    "#{err.message}"
+                )
+              end
+            end
+          elsif
+            (f_duration() < 15.) and (keep == "1")
+          then
+            try
+              file.mkdir("#{directory}/" ^ folder() ^ "/incomplete")
+
+              file.move(tfilename(), "#{directory}/" ^ folder() ^ "/incomplete")
+
+              log_level_3(
+                tno ^
+                  " Moved unwanted fragment ID " ^
+                  tno ^
+                  " to incomplete. Filename " ^
+                  tfilename()
+              )
+            catch err do
+              log_level_2(
+                tno ^
+                  " WARNING: could not move unwanted fragment to incomplete: " ^
+                  "#{err.message}"
+              )
+            end
+          elsif
+            f_duration() > 15.
+          then
+            log_level_3(
+              tno ^
+                " Finished. Keeping file : " ^
+                tfilename()
+            )
+          end
+        else
+          # ----------------------------------------------------
+          # FINAL COPY FAILED
+          # IMPORTANT: KEEP EVERYTHING
+          # ----------------------------------------------------
+
+          log_level_1(
+            tno ^
+              " FINAL COPY FAILED - keeping original recording: " ^
+              f
+          )
+
+          log_level_1(
+            tno ^
+              " Processed temporary file retained: " ^
+              tmp_ext_filename
+          )
+        end
+      else
+        # ------------------------------------------------------
+        # FFMPEG FAILED
+        # IMPORTANT: KEEP ORIGINAL RECORDING
+        # ------------------------------------------------------
+
+        log_level_1(
+          tno ^
+            " FFMPEG FAILED - keeping original recording: " ^
+            f
+        )
+
+        # ------------------------------------------------------
+        # CLEAN FAILED TEMP SOURCE
+        # ------------------------------------------------------
 
         if
           file.exists(tmp_filename)
@@ -1794,182 +1992,23 @@ def handle_file(f) =
           catch err do
             log_level_2(
               tno ^
-                " WARNING: could not remove temporary source: " ^
+                " WARNING: could not remove failed temp file: " ^
                 "#{err.message}"
             )
           end
         end
-
-        # ----------------------------------------------------
-        # REMOVE COVER
-        # ----------------------------------------------------
-
-        if
-          file.exists(c)
-        then
-          try
-            file.remove(c)
-          catch err do
-            log_level_2(
-              tno ^
-                " WARNING: could not remove cover: " ^
-                "#{err.message}"
-            )
-          end
-        end
-
-        # ----------------------------------------------------
-        # REMOVE COVER METADATA FILE
-        # ----------------------------------------------------
-
-        if
-          file.exists(metaname)
-        then
-          try
-            file.remove(metaname)
-          catch err do
-            log_level_3(
-              tno ^
-                " WARNING: could not remove cover metadata file: " ^
-                "#{err.message}"
-            )
-          end
-        end
-
-        # ----------------------------------------------------
-        # REMOVE PROCESSED TEMP
-        # ----------------------------------------------------
-
-        if
-          file.exists(tmp_ext_filename)
-        then
-          try
-            file.remove(tmp_ext_filename)
-          catch err do
-            log_level_2(
-              tno ^
-                " WARNING: could not remove processed temp file: " ^
-                "#{err.message}"
-            )
-          end
-        end
-
-        # ----------------------------------------------------
-        # SHORT FRAGMENT HANDLING
-        # ----------------------------------------------------
-
-        if
-          (f_duration() < 15.) and (keep == "0")
-        then
-          if
-            file.exists(tfilename())
-          then
-            try
-              file.remove(tfilename())
-
-              log_level_3(
-                tno ^
-                  " Deleted unwanted fragment " ^
-                  tfilename()
-              )
-            catch err do
-              log_level_2(
-                tno ^
-                  " WARNING: could not delete unwanted fragment: " ^
-                  "#{err.message}"
-              )
-            end
-          end
-        elsif
-          (f_duration() < 15.) and (keep == "1")
-        then
-          try
-            file.mkdir("#{directory}/" ^ folder() ^ "/incomplete")
-
-            file.move(tfilename(), "#{directory}/" ^ folder() ^ "/incomplete")
-
-            log_level_3(
-              tno ^
-                " Moved unwanted fragment ID " ^
-                tno ^
-                " to incomplete. Filename " ^
-                tfilename()
-            )
-          catch err do
-            log_level_2(
-              tno ^
-                " WARNING: could not move unwanted fragment to incomplete: " ^
-                "#{err.message}"
-            )
-          end
-        elsif
-          f_duration() > 15.
-        then
-          log_level_3(
-            tno ^
-              " Finished. Keeping file : " ^
-              tfilename()
-          )
-        end
-      else
-        # ----------------------------------------------------
-        # FINAL COPY FAILED
-        # IMPORTANT: KEEP EVERYTHING
-        # ----------------------------------------------------
-
-        log_level_1(
-          tno ^
-            " FINAL COPY FAILED - keeping original recording: " ^
-            f
-        )
-
-        log_level_1(
-          tno ^
-            " Processed temporary file retained: " ^
-            tmp_ext_filename
-        )
       end
     else
-      # ------------------------------------------------------
-      # FFMPEG FAILED
-      # IMPORTANT: KEEP ORIGINAL RECORDING
-      # ------------------------------------------------------
+      # --------------------------------------------------------
+      # SOURCE COPY FAILED
+      # --------------------------------------------------------
 
       log_level_1(
         tno ^
-          " FFMPEG FAILED - keeping original recording: " ^
+          " SOURCE COPY FAILED - keeping original recording: " ^
           f
       )
-
-      # ------------------------------------------------------
-      # CLEAN FAILED TEMP SOURCE
-      # ------------------------------------------------------
-
-      if
-        file.exists(tmp_filename)
-      then
-        try
-          file.remove(tmp_filename)
-        catch err do
-          log_level_2(
-            tno ^
-              " WARNING: could not remove failed temp file: " ^
-              "#{err.message}"
-          )
-        end
-      end
     end
-  else
-    # --------------------------------------------------------
-    # SOURCE COPY FAILED
-    # --------------------------------------------------------
-
-    log_level_1(
-      tno ^
-        " SOURCE COPY FAILED - keeping original recording: " ^
-        f
-    )
-  end
   end
 end
 
