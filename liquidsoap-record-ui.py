@@ -1265,13 +1265,11 @@ class LiquidsoapRecordApp:
         self.log_frame.rowconfigure(0, weight=1)
         self.log_frame.columnconfigure(0, weight=1)
         self.log_text = tk.Text(self.log_frame, font=("Consolas", 9), relief="flat", borderwidth=0,
-                                wrap="none", padx=10, pady=10)
+                                wrap="char", padx=10, pady=10)
         scroll_y = ttk.Scrollbar(self.log_frame, orient="vertical", command=self.log_text.yview)
-        scroll_x = ttk.Scrollbar(self.log_frame, orient="horizontal", command=self.log_text.xview)
-        self.log_text.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+        self.log_text.configure(yscrollcommand=scroll_y.set)
         self.log_text.grid(row=0, column=0, sticky="nsew")
         scroll_y.grid(row=0, column=1, sticky="ns")
-        scroll_x.grid(row=1, column=0, sticky="ew")
 
 
     # ========================================================
