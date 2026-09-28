@@ -1,5 +1,5 @@
 #record.liq
-#Version 1.0.56 2026-09-27
+#Version 1.0.57 2026-09-28
 #Liquidsoap 2.4.5 stable - 2.5.0 testing
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -station "<station>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> -timeout <0>
@@ -846,6 +846,27 @@ filename =
 nowrecording.set(time.string("%Y-%m-%d_%H-%M-%S." ^ ext() ^ ".rec#s"))
 
 # ------------------------------------------------------------
+# icy METADATA
+# ------------------------------------------------------------
+
+def update_relay_metadata(a, t, u) =
+  try
+    icy.update_metadata(
+      host=hostx,
+      port=int_of_string(port),
+      user="source",
+      password=password,
+      mount="stream",
+      [("artist", a), ("title", t), ("url", u)]
+    )
+  catch err do
+    log_level_3(
+      "Relay metadata update failed: #{err.message}"
+    )
+  end
+end
+
+# ------------------------------------------------------------
 # HANDLE METADATA / REOPEN FILE
 # ------------------------------------------------------------
 
@@ -896,9 +917,18 @@ def handle_metadata(m) =
       )
 
       if
+        relay == "1"
+      then
+        thread.run(
+          fast=false, {update_relay_metadata(m["artist"], m["title"], "")}
+        )
+      end
+
+      if
         covers == "1"
       then
         thread.run(
+          fast=false,
           {
             download_cover(
               m,
@@ -951,6 +981,12 @@ def handle_metadata(m) =
           "#{f_title}." ^
           ext()
       )
+
+      if
+        relay == "1"
+      then
+        thread.run(fast=false, {update_relay_metadata("", m["title"], "")})
+      end
 
       log_level_2(
         "-- press CTRL-C to stop/exit --"
@@ -2144,6 +2180,7 @@ then
   #Now Recording info
 
   thread.run(
+    fast=false,
     every=30.,
     fun () ->
       log_level_2(
@@ -2173,7 +2210,7 @@ then
         "LSR relay",
       password=password,
       mount="stream",
-      send_icy_metadata=true,
+      send_icy_metadata=false,
       mksafe(ffmpeg.decode.audio(s1))
     )
   end
@@ -2293,7 +2330,7 @@ else
         "LSR relay",
       password=password,
       mount="stream",
-      send_icy_metadata=true,
+      send_icy_metadata=false,
       mksafe(s2)
     )
   end
