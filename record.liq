@@ -1,5 +1,5 @@
 #record.liq
-#Version 1.0.58 2026-10-09
+#Version 1.0.59 2026-10-09
 #Liquidsoap 2.4.5 stable - 2.5.0 testing
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -station "<station>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> -timeout <0>
@@ -637,6 +637,27 @@ def add_metadata(m) =
 end
 
 # ------------------------------------------------------------
+# icy METADATA
+# ------------------------------------------------------------
+
+def update_relay_metadata(a, t, u) =
+  try
+    icy.update_metadata(
+      host=hostx,
+      port=int_of_string(port),
+      user="source",
+      password=password,
+      mount="stream",
+      [("artist", a), ("title", t), ("url", u)]
+    )
+  catch err do
+    log_level_3(
+      "Relay metadata update failed: #{err.message}"
+    )
+  end
+end
+
+# ------------------------------------------------------------
 # HTTP COVER DOWNLOAD
 # ------------------------------------------------------------
 
@@ -820,16 +841,9 @@ def download_cover(m, covername, count_id) =
 
   #update iceacast relay
   if
-    (relay == "1") and (cover() != "")
+    relay == "1"
   then
-    icy.update_metadata(
-      host=hostx,
-      port=int_of_string(port),
-      user="source",
-      password=password,
-      mount="stream",
-      [("artist", artist()), ("title", title()), ("url", cover())]
-    )
+  update_relay_metadata(artist(), title(), cover())
   end
 end
 
@@ -844,27 +858,6 @@ filename =
   )
 
 nowrecording.set(time.string("%Y-%m-%d_%H-%M-%S." ^ ext() ^ ".rec#s"))
-
-# ------------------------------------------------------------
-# icy METADATA
-# ------------------------------------------------------------
-
-def update_relay_metadata(a, t, u) =
-  try
-    icy.update_metadata(
-      host=hostx,
-      port=int_of_string(port),
-      user="source",
-      password=password,
-      mount="stream",
-      [("artist", a), ("title", t), ("url", u)]
-    )
-  catch err do
-    log_level_3(
-      "Relay metadata update failed: #{err.message}"
-    )
-  end
-end
 
 # ------------------------------------------------------------
 # HANDLE METADATA / REOPEN FILE
@@ -917,7 +910,7 @@ def handle_metadata(m) =
       )
 
       if
-        relay == "1"
+        relay == "1" and covers == "0"
       then
         thread.run(
           fast=false, {update_relay_metadata(m["artist"], m["title"], "")}
@@ -983,7 +976,7 @@ def handle_metadata(m) =
       )
 
       if
-        relay == "1"
+        relay == "1" and covers == "0"
       then
         thread.run(fast=false, {update_relay_metadata("", m["title"], "")})
       end
