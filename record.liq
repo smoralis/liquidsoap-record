@@ -1,6 +1,6 @@
 #record.liq
-#Version 1.0.60 2026-10-09
-#Liquidsoap 2.4.5 stable - 2.5.0 testing
+#Version 1.0.61 2026-10-09
+#Liquidsoap 2.4.5 - 2.4.6 - 2.5.0 testing
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -station "<station>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> -timeout <0>
 
@@ -843,7 +843,7 @@ def download_cover(m, covername, count_id) =
   if
     relay == "1"
   then
-  update_relay_metadata(artist(), title(), cover())
+  update_relay_metadata(m["artist"], m["title"], cover())
   end
 end
 
@@ -2181,9 +2181,8 @@ then
       s1,
       reopen_on_metadata=handle_metadata,
       on_close=handle_file_dispatch,
-      append=
-        #      reopen_on_error=fun (_) -> 0.,
-        true,
+      append=true,
+#     reopen_on_error=fun (_) -> 0.,
       fallible=true
     )
 
@@ -2323,9 +2322,8 @@ else
       s2,
       reopen_on_metadata=handle_metadata,
       on_close=handle_file_dispatch,
-      append=
-        #      reopen_on_error=fun (_) -> 0.,
-        true,
+      append=true,
+#     reopen_on_error=fun (_) -> 0.,
       fallible=true
     )
 
