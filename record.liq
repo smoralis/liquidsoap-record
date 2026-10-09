@@ -1,5 +1,5 @@
 #record.liq
-#Version 1.0.57 2026-09-28
+#Version 1.0.58 2026-10-09
 #Liquidsoap 2.4.5 stable - 2.5.0 testing
 
 #usage liquidsoap record.liq -- -url "<url>" -dir "<directory>" -station "<station>" -transcode <0> -samplerate "<samplerate>" -format "<format>" -codec "<codec>" -bitrate "<bitrate>" -listen <0> -device "<portaudio><alsa>" -log <2> -keep <0> -id <tunein_id> -relay <0> -host "<host>" -port <port> -password "<password>" -m3u <0> -covers <0> -single <0> -timeout <0>
@@ -75,7 +75,7 @@ log_level_2(
   "Version >= 2.5.0 Starting Icecast server"
 )
 
-icecast_server = icecast.server(port=int_of_string(port), password="hackme")
+icecast_server = icecast.server(port=int_of_string(port), password=password)
 
 # React when a source connects
 icecast_server.on_source_connect(
@@ -144,12 +144,13 @@ settings.ffmpeg.log.verbosity := "error"
 #
 %ifversion >= 2.5.0
 log_level_2(
-  "Version >= 2.5.0 Setup scheduler options"
+  "Version >= 2.5.0 - concurrent scheduler: allowing multiple blocking tasks to \
+   run at once instead of serializing them"
 )
-settings.scheduler.blocking_tasks := 8
+#use default settings
 %else
 log_level_2(
-  "Version < 2.5.0 Setup scheduler options"
+  "Version < 2.5.0 - legacy scheduler"
 )
 settings.scheduler.generic_queues.set(1)
 settings.scheduler.fast_queues.set(0)
@@ -719,7 +720,6 @@ def download_cover(m, covername, count_id) =
   end
 
   # TuneIn cover
-
   if
     not found() and (string.length(tunein_id()) > 2)
   then
@@ -987,7 +987,6 @@ def handle_metadata(m) =
       then
         thread.run(fast=false, {update_relay_metadata("", m["title"], "")})
       end
-
       log_level_2(
         "-- press CTRL-C to stop/exit --"
       )
@@ -2052,13 +2051,70 @@ end
 # ASYNC FILE POST-PROCESSING
 # ------------------------------------------------------------
 
-def handle_file_async(f) =
-  log_level_3(
-    "QUEUE POST-PROCESSING: " ^
-      f
-  )
+MAX_PENDING_POSTPROC = 10
 
-  thread.run(fast=false, {handle_file(f)})
+pending_postproc = ref(0)
+
+def handle_file_async(f) =
+  if
+    pending_postproc() >= MAX_PENDING_POSTPROC
+  then
+    log_level_1(
+      "POST-PROCESSING BACKLOG (" ^
+        string(pending_postproc()) ^
+        " pending, cap " ^
+        string(MAX_PENDING_POSTPROC) ^
+        ") - processing synchronously to apply backpressure: " ^
+        f
+    )
+
+    handle_file(f)
+  else
+    let queued_at = time()
+
+    pending_postproc.set(pending_postproc() + 1)
+
+    log_level_3(
+      "QUEUE POST-PROCESSING (" ^
+        string(pending_postproc()) ^
+        " pending): " ^
+        f
+    )
+
+    thread.run(
+      fast=true,
+      {
+        let started_at = time()
+        let queue_wait = started_at - queued_at
+
+        log_level_2(
+          "POST-PROCESSING START (waited " ^
+            string(queue_wait) ^
+            "s for a scheduler slot, " ^
+            string(pending_postproc()) ^
+            " pending): " ^
+            f
+        )
+
+        handle_file(f)
+
+        let finished_at = time()
+
+        pending_postproc.set(pending_postproc() - 1)
+
+        log_level_2(
+          "POST-PROCESSING DONE (ran " ^
+            string(finished_at - started_at) ^
+            "s, " ^
+            string(finished_at - queued_at) ^
+            "s total since dispatch, " ^
+            string(pending_postproc()) ^
+            " still pending): " ^
+            f
+        )
+      }
+    )
+  end
 end
 
 # ------------------------------------------------------------
