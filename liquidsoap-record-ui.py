@@ -29,6 +29,15 @@ if sys.platform == "win32":
 
 
 # ============================================================
+# APPLICATION INFO
+# ============================================================
+
+APP_NAME = "Liquidsoap Record UI"
+APP_VERSION = "1.0.1"
+APP_TITLE = f"{APP_NAME} v{APP_VERSION}"
+
+
+# ============================================================
 # DEFAULTS
 # ============================================================
 
@@ -334,7 +343,7 @@ class LiquidsoapRecordApp:
         cli_overrides = getattr(args, "_cli_overrides", set())
 
         # Linux desktop/taskbar identity
-        self.root.title("Liquidsoap Recorder")
+        self.root.title(APP_TITLE)
         self.root.iconname("Liquidsoap Recorder")
         try:
             # Set the X11/Wayland window class so desktop environments
@@ -792,7 +801,7 @@ class LiquidsoapRecordApp:
 
         self.title_label = tk.Label(
             self.header,
-            text="Liquidsoap Record",
+            text=APP_TITLE,
             font=("Segoe UI", 18, "bold"),
             relief="flat",
             bd=0,
@@ -1294,7 +1303,7 @@ class LiquidsoapRecordApp:
         ttk.Checkbutton(self.recording_frame, text="Enable transcoding", variable=self.transcode,
                         style="Panel.TCheckbutton").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 7))
         self.add_combo(self.recording_frame, "Format", self.format, ["mp3", "m4a", "flac", "ogg", "opus"], 1)
-        self.add_combo(self.recording_frame, "Codec", self.codec, ["libmp3lame", "aac", "flac", "libopus", "vorbis"], 2)
+        self.add_combo(self.recording_frame, "Codec", self.codec, ["libmp3lame", "aac", "flac", "libopus", "libvorbis"], 2)
         self.add_combo(self.recording_frame, "Sample Rate", self.samplerate, ["22050", "32000", "44100", "48000", "96000"], 3)
         self.add_combo(self.recording_frame, "Bitrate", self.bitrate, ["64k", "96k", "128k", "160k", "192k", "256k", "320k"], 4)
 
@@ -3779,7 +3788,7 @@ class LiquidsoapRecordApp:
     content="width=device-width, initial-scale=1.0"
 >
 
-<title>Liquidsoap Record</title>
+<title>__APP_TITLE__</title>
 
 <style>
 
@@ -4573,7 +4582,7 @@ button:disabled {
     <div class="header">
 
         <h1>
-            Liquidsoap Record
+            __APP_TITLE__
         </h1>
 
         <div
@@ -4831,7 +4840,7 @@ button:disabled {
                     <option>aac</option>
                     <option>flac</option>
                     <option>libopus</option>
-                    <option>vorbis</option>
+                    <option>libvorbis</option>
 
                 </select>
 
@@ -5877,7 +5886,7 @@ setInterval(
 
 </body>
 </html>
-"""
+""".replace("__APP_TITLE__", APP_TITLE)
 
     # ========================================================
     # CLOSE
@@ -5994,6 +6003,12 @@ def parse_arguments():
             "Liquidsoap Record desktop application "
             "with optional web interface."
         )
+    )
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=APP_TITLE
     )
 
     # --------------------------------------------------------
