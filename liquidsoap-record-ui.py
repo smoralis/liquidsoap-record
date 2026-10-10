@@ -260,6 +260,18 @@ class RecorderWebServer:
 
                     return
 
+                if path == "/api/stream-urls":
+
+                    result = app.web_stream_urls(data)
+
+                    self.send_json(
+                        result,
+                        200 if result.get("ok")
+                        else 400
+                    )
+
+                    return
+
                 if path == "/api/parameters":
 
                     result = (
@@ -504,6 +516,12 @@ class LiquidsoapRecordApp:
 
         self.url = tk.StringVar(
             value=args.url or ""
+        )
+
+        # Saved stream URLs (shown in the dropdown, stored in the
+        # parameters JSON file under "stream_urls").
+        self.stream_urls = self.clean_stream_list(
+            saved.get("stream_urls")
         )
 
         self.directory = tk.StringVar(
@@ -1251,13 +1269,25 @@ class LiquidsoapRecordApp:
         self.source = ttk.LabelFrame(left_host, text="  01  ·  STREAM SOURCE  ", padding=12)
         self.source.grid(row=3, column=0, sticky="ew", pady=(0, 8))
         self.source.columnconfigure(1, weight=1)
-        ttk.Label(self.source, text="Stream URL", style="Panel.TLabel").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=4)
-        ttk.Entry(self.source, textvariable=self.url).grid(row=0, column=1, sticky="ew", pady=4)
-        ttk.Label(self.source, text="Directory", style="Panel.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=4)
-        ttk.Entry(self.source, textvariable=self.directory).grid(row=1, column=1, sticky="ew", pady=4)
-        ttk.Button(self.source, text="Browse", command=self.browse_directory).grid(row=1, column=2, padx=(7, 0), pady=4)
-        ttk.Label(self.source, text="Station", style="Panel.TLabel").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=4)
-        ttk.Entry(self.source, textvariable=self.station).grid(row=2, column=1, sticky="ew", pady=4)
+        ttk.Label(self.source, text="Stream URL", style="Panel.TLabel").grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 2))
+        self.url_combo = ttk.Combobox(
+            self.source,
+            textvariable=self.url,
+            values=[self.stream_label(e) for e in self.stream_urls],
+            height=15,
+            font=("Segoe UI", 11)
+        )
+        self.url_combo.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 4), ipady=3)
+        self.url_combo.bind("<<ComboboxSelected>>", self.on_stream_selected)
+        url_buttons = ttk.Frame(self.source)
+        url_buttons.grid(row=2, column=0, columnspan=3, sticky="w", pady=(0, 6))
+        ttk.Button(url_buttons, text="+", width=2, command=self.add_stream_url).pack(side="left")
+        ttk.Button(url_buttons, text="-", width=2, command=self.remove_stream_url).pack(side="left", padx=(3, 0))
+        ttk.Label(self.source, text="Directory", style="Panel.TLabel").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=4)
+        ttk.Entry(self.source, textvariable=self.directory).grid(row=3, column=1, sticky="ew", pady=4)
+        ttk.Button(self.source, text="Browse", command=self.browse_directory).grid(row=3, column=2, padx=(7, 0), pady=4)
+        ttk.Label(self.source, text="Station", style="Panel.TLabel").grid(row=4, column=0, sticky="w", padx=(0, 8), pady=4)
+        ttk.Entry(self.source, textvariable=self.station).grid(row=4, column=1, sticky="ew", pady=4)
 
         # RIGHT 70%: full-height console.
         right = ttk.Frame(tab)
@@ -1858,6 +1888,182 @@ class LiquidsoapRecordApp:
                 bg=c["red_dark"],
                 fg=c["red"]
             )
+
+    # ========================================================
+    # STREAM URL LIST
+    # ========================================================
+
+    @staticmethod
+    def clean_stream_list(value):
+
+        # Each entry is {"name": station name, "url": stream URL}.
+        # Plain strings (older saved files) are converted.
+        result = []
+        seen = set()
+
+        if isinstance(value, list):
+            for item in value:
+
+                if isinstance(item, str):
+                    item = {"name": "", "url": item}
+
+                if not isinstance(item, dict):
+                    continue
+
+                url = str(item.get("url", "")).strip()
+                name = str(item.get("name", "")).strip()
+
+                if url and url not in seen:
+                    seen.add(url)
+                    result.append({"name": name, "url": url})
+
+        return result
+
+    @staticmethod
+    def stream_label(entry):
+
+        if entry["name"]:
+            return f'{entry["name"]}  \u2014  {entry["url"]}'
+
+        return entry["url"]
+
+    def save_stream_urls(self):
+
+        # Update only the "stream_urls" key so the rest of the saved
+        # parameters (and CLI-override handling) are left untouched.
+        try:
+
+            data = self.load_saved_parameters()
+            data["stream_urls"] = [dict(e) for e in self.stream_urls]
+
+            tmp = PARAMETERS_FILE + ".tmp"
+
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+
+            os.replace(tmp, PARAMETERS_FILE)
+
+            return True
+
+        except Exception as e:
+
+            self.write_log(
+                f"[URL] Could not save stream list: {e}"
+            )
+
+            return False
+
+    def refresh_url_dropdown(self):
+
+        combo = getattr(self, "url_combo", None)
+
+        if combo is not None:
+            try:
+                combo.configure(
+                    values=[
+                        self.stream_label(e)
+                        for e in self.stream_urls
+                    ]
+                )
+            except tk.TclError:
+                pass
+
+    def on_stream_selected(self, event=None):
+
+        index = self.url_combo.current()
+
+        if 0 <= index < len(self.stream_urls):
+
+            entry = self.stream_urls[index]
+
+            self.url.set(entry["url"])
+
+            if entry["name"]:
+                self.station.set(entry["name"])
+
+    def add_stream_url(self, url=None, name=None):
+
+        if url is None:
+            url = self.url.get()
+
+        if name is None:
+            name = self.station.get()
+
+        url = url.strip()
+        name = name.strip()
+
+        if not url:
+            return {"ok": False, "error": "No stream URL to add."}
+
+        existing = next(
+            (e for e in self.stream_urls if e["url"] == url),
+            None
+        )
+
+        if existing is not None:
+
+            if not name or name == existing["name"]:
+                return {
+                    "ok": False,
+                    "error": "URL is already in the list."
+                }
+
+            existing["name"] = name
+            self.save_stream_urls()
+            self.refresh_url_dropdown()
+            self.write_log(f"[URL] Updated station name: {name}")
+
+            return {"ok": True, "message": "Station name updated."}
+
+        self.stream_urls.append({"name": name, "url": url})
+        self.save_stream_urls()
+        self.refresh_url_dropdown()
+        self.write_log(
+            f"[URL] Added to list: "
+            f"{name + ' - ' if name else ''}{url}"
+        )
+
+        return {"ok": True, "message": "Stream added to list."}
+
+    def remove_stream_url(self, url=None):
+
+        if url is None:
+            url = self.url.get()
+
+        url = url.strip()
+
+        remaining = [e for e in self.stream_urls if e["url"] != url]
+
+        if len(remaining) == len(self.stream_urls):
+            return {"ok": False, "error": "URL is not in the list."}
+
+        self.stream_urls = remaining
+        self.save_stream_urls()
+        self.refresh_url_dropdown()
+        self.write_log(f"[URL] Removed from list: {url}")
+
+        return {"ok": True, "message": "Stream removed from list."}
+
+    def web_stream_urls(self, data):
+
+        action = str(data.get("action", "")).lower()
+        url = str(data.get("url", ""))
+        name = str(data.get("name", ""))
+
+        if action == "add":
+            result = self.add_stream_url(url, name)
+        elif action == "remove":
+            result = self.remove_stream_url(url)
+        else:
+            result = {"ok": False, "error": "Unknown action."}
+
+        # Keep the desktop dropdown in sync (Tk must be touched
+        # from its own thread).
+        self.root.after(0, self.refresh_url_dropdown)
+
+        result["stream_urls"] = [dict(e) for e in self.stream_urls]
+
+        return result
 
     # ========================================================
     # PARAMETER PERSISTENCE
@@ -3380,6 +3586,9 @@ class LiquidsoapRecordApp:
             "url":
                 self.url.get(),
 
+            "stream_urls":
+                [dict(e) for e in self.stream_urls],
+
             "directory":
                 self.directory.get(),
 
@@ -4276,6 +4485,35 @@ select:focus {
         rgba(88,166,255,.10);
 }
 
+.url-row {
+
+    display:flex;
+
+    gap:6px;
+
+    margin-top:6px;
+}
+
+.url-select {
+
+    width:100%;
+
+    font-size:15px;
+
+    padding:12px 8px;
+}
+
+.url-row button {
+
+    width:34px;
+
+    padding:0;
+
+    font-size:18px;
+
+    line-height:1;
+}
+
 .check {
 
     display:flex;
@@ -4755,7 +4993,41 @@ button:disabled {
                     Stream URL
                 </label>
 
-                <input id="url">
+                <select
+                    id="url_select"
+                    class="url-select"
+                    onchange="selectStreamUrl()"
+                >
+                    <option value="">Saved streams</option>
+                </select>
+
+                <input
+                    id="url"
+                    style="margin-top:6px"
+                    oninput="syncStreamSelect()"
+                >
+
+                <div class="url-row">
+
+                    <button
+                        type="button"
+                        class="save"
+                        title="Add / update this stream (URL + station name)"
+                        onclick="postStreamUrl('add')"
+                    >
+                        +
+                    </button>
+
+                    <button
+                        type="button"
+                        class="stop"
+                        title="Remove this stream from the list"
+                        onclick="postStreamUrl('remove')"
+                    >
+                        -
+                    </button>
+
+                </div>
 
             </div>
 
@@ -5402,6 +5674,120 @@ function getFormData() {
    SET FORM DATA
    ========================================================= */
 
+let streamUrls = [];
+
+function streamLabel(entry) {
+
+    return entry.name
+        ? entry.name + "  \u2014  " + entry.url
+        : entry.url;
+}
+
+function renderStreamUrls(list) {
+
+    if (Array.isArray(list)) {
+        streamUrls = list;
+    }
+
+    const select = document.getElementById("url_select");
+
+    select.innerHTML = "";
+
+    const first = document.createElement("option");
+    first.value = "";
+    first.textContent =
+        "Saved streams (" + streamUrls.length + ")";
+    select.appendChild(first);
+
+    streamUrls.forEach(
+        function(entry) {
+            const option = document.createElement("option");
+            option.value = entry.url;
+            option.textContent = streamLabel(entry);
+            select.appendChild(option);
+        }
+    );
+
+    syncStreamSelect();
+}
+
+function syncStreamSelect() {
+
+    const current =
+        document.getElementById("url").value.trim();
+
+    const found = streamUrls.some(
+        function(entry) {
+            return entry.url === current;
+        }
+    );
+
+    document.getElementById("url_select").value =
+        found ? current : "";
+}
+
+function selectStreamUrl() {
+
+    const value =
+        document.getElementById("url_select").value;
+
+    if (!value) {
+        return;
+    }
+
+    const entry = streamUrls.find(
+        function(item) {
+            return item.url === value;
+        }
+    );
+
+    document.getElementById("url").value = value;
+
+    if (entry && entry.name) {
+        document.getElementById("station").value = entry.name;
+    }
+}
+
+async function postStreamUrl(action) {
+
+    const url =
+        document.getElementById("url").value.trim();
+
+    const name =
+        document.getElementById("station").value.trim();
+
+    try {
+
+        const response = await fetch(
+            "/api/stream-urls",
+            {
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body:JSON.stringify(
+                    {action:action, url:url, name:name}
+                )
+            }
+        );
+
+        const data = await response.json();
+
+        if (data.stream_urls) {
+            renderStreamUrls(data.stream_urls);
+        }
+
+        if (!data.ok) {
+            showMessage(data.error || "Could not update list.");
+            return;
+        }
+
+        showMessage(data.message || "Stream list updated.", true);
+
+    } catch (error) {
+
+        showMessage("Error: " + error);
+    }
+}
+
 function setFormData(data) {
 
     fields.forEach(
@@ -5432,6 +5818,8 @@ function setFormData(data) {
 
         }
     );
+
+    renderStreamUrls(data.stream_urls);
 
     updateRelayPlayerUrl();
 }
