@@ -1267,9 +1267,13 @@ class LiquidsoapRecordApp:
 
         # STREAM SOURCE remains on the main Recorder tab.
         self.source = ttk.LabelFrame(left_host, text="  01  ·  STREAM SOURCE  ", padding=12)
-        self.source.grid(row=3, column=0, sticky="ew", pady=(0, 8))
+        self.source.grid(row=3, column=0, sticky="new", pady=(0, 8))
         self.source.columnconfigure(1, weight=1)
-        ttk.Label(self.source, text="Stream URL", style="Panel.TLabel").grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 2))
+        url_head = ttk.Frame(self.source)
+        url_head.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 2))
+        ttk.Label(url_head, text="Stream URL", style="Panel.TLabel").pack(side="left")
+        ttk.Button(url_head, text="-", width=2, command=self.remove_stream_url).pack(side="right")
+        ttk.Button(url_head, text="+", width=2, command=self.add_stream_url).pack(side="right", padx=(0, 3))
         self.url_combo = ttk.Combobox(
             self.source,
             textvariable=self.url,
@@ -1277,17 +1281,13 @@ class LiquidsoapRecordApp:
             height=15,
             font=("Segoe UI", 11)
         )
-        self.url_combo.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 4), ipady=3)
+        self.url_combo.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 6), ipady=3)
         self.url_combo.bind("<<ComboboxSelected>>", self.on_stream_selected)
-        url_buttons = ttk.Frame(self.source)
-        url_buttons.grid(row=2, column=0, columnspan=3, sticky="w", pady=(0, 6))
-        ttk.Button(url_buttons, text="+", width=2, command=self.add_stream_url).pack(side="left")
-        ttk.Button(url_buttons, text="-", width=2, command=self.remove_stream_url).pack(side="left", padx=(3, 0))
-        ttk.Label(self.source, text="Directory", style="Panel.TLabel").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=4)
-        ttk.Entry(self.source, textvariable=self.directory).grid(row=3, column=1, sticky="ew", pady=4)
-        ttk.Button(self.source, text="Browse", command=self.browse_directory).grid(row=3, column=2, padx=(7, 0), pady=4)
-        ttk.Label(self.source, text="Station", style="Panel.TLabel").grid(row=4, column=0, sticky="w", padx=(0, 8), pady=4)
-        ttk.Entry(self.source, textvariable=self.station).grid(row=4, column=1, sticky="ew", pady=4)
+        ttk.Label(self.source, text="Directory", style="Panel.TLabel").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=4)
+        ttk.Entry(self.source, textvariable=self.directory).grid(row=2, column=1, sticky="ew", pady=4)
+        ttk.Button(self.source, text="Browse", command=self.browse_directory).grid(row=2, column=2, padx=(7, 0), pady=4)
+        ttk.Label(self.source, text="Station", style="Panel.TLabel").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=4)
+        ttk.Entry(self.source, textvariable=self.station).grid(row=3, column=1, sticky="ew", pady=4)
 
         # RIGHT 70%: full-height console.
         right = ttk.Frame(tab)
@@ -4485,13 +4485,20 @@ select:focus {
         rgba(88,166,255,.10);
 }
 
-.url-row {
+.url-head {
 
     display:flex;
 
+    align-items:center;
+
     gap:6px;
 
-    margin-top:6px;
+    margin-bottom:6px;
+}
+
+.url-head label {
+
+    margin:0 auto 0 0;
 }
 
 .url-select {
@@ -4503,7 +4510,7 @@ select:focus {
     padding:12px 8px;
 }
 
-.url-row button {
+.url-head button {
 
     width:34px;
 
@@ -4989,25 +4996,11 @@ button:disabled {
 
             <div class="field">
 
-                <label>
-                    Stream URL
-                </label>
+                <div class="url-head">
 
-                <select
-                    id="url_select"
-                    class="url-select"
-                    onchange="selectStreamUrl()"
-                >
-                    <option value="">Saved streams</option>
-                </select>
-
-                <input
-                    id="url"
-                    style="margin-top:6px"
-                    oninput="syncStreamSelect()"
-                >
-
-                <div class="url-row">
+                    <label>
+                        Stream URL
+                    </label>
 
                     <button
                         type="button"
@@ -5028,6 +5021,20 @@ button:disabled {
                     </button>
 
                 </div>
+
+                <select
+                    id="url_select"
+                    class="url-select"
+                    onchange="selectStreamUrl()"
+                >
+                    <option value="">Saved streams</option>
+                </select>
+
+                <input
+                    id="url"
+                    style="margin-top:6px"
+                    oninput="syncStreamSelect()"
+                >
 
             </div>
 
